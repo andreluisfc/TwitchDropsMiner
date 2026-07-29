@@ -58,7 +58,10 @@ class WebGUIManager:
         self.login = LoginFormManager(self._broadcaster, self)
 
         # Callback to trigger game update when relevant settings change
-        on_settings_change = self._twitch.get_change_state_callable(State.GAMES_UPDATE)
+        def on_settings_change() -> None:
+            self._twitch.telegram.on_settings_changed()
+            self._twitch.change_state(State.GAMES_UPDATE)
+
         self.settings = SettingsManager(
             self._broadcaster, twitch.settings, self.output, on_change=on_settings_change
         )
@@ -109,6 +112,7 @@ class WebGUIManager:
         if subone:
             remaining -= 60
         self.progress.update(drop, remaining)
+        self._twitch.telegram.queue_status_update()
 
     def clear_drop(self):
         """Clear the drop progress display."""
@@ -165,6 +169,7 @@ class WebGUIManager:
         """Broadcast the list of wanted items to connected clients."""
         tree = self.get_wanted_game_tree()
         asyncio.create_task(self._broadcaster.emit("wanted_items_update", tree))
+        self._twitch.telegram.queue_status_update()
 
 
 # Type aliases for backwards compatibility with code that imports from gui

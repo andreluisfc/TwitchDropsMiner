@@ -132,6 +132,7 @@ class WatchService:
                 status_text = _.t["status"]["watching"].format(channel=channel.name)
             self._twitch.print(status_text)
             self._twitch.gui.status.update(status_text)
+        self._twitch.telegram.notify_channel_switch(channel)
 
     def stop_watching(self) -> None:
         """

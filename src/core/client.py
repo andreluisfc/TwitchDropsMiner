@@ -30,6 +30,7 @@ from src.services.inventory_service import InventoryService
 from src.services.maintenance import MaintenanceService
 from src.services.message_handlers import MessageHandlerService
 from src.services.stream_selector import StreamSelector
+from src.services.telegram_service import TelegramService
 from src.services.watch_service import WatchService
 from src.utils import (
     AwaitableValue,
@@ -88,6 +89,7 @@ class Twitch:
         self._inventory_service: InventoryService = InventoryService(self)
         self._watch_service: WatchService = WatchService(self)
         self._stream_selector: StreamSelector = StreamSelector()
+        self.telegram: TelegramService = TelegramService(self)
 
     def _ensure_api_clients(self) -> None:
         """Ensure API clients are initialized (called after GUI is set)."""
@@ -126,6 +128,7 @@ class Twitch:
             self._mnt_task.cancel()
             self._mnt_task = None
         # stop websocket and close HTTP session
+        await self.telegram.stop()
         await self.websocket.stop(clear_topics=True)
         if self._http_client is not None:
             await self._http_client.close()
@@ -198,6 +201,7 @@ class Twitch:
         self._ensure_api_clients()
         auth_state = await self.get_auth()
         await self.websocket.start()
+        await self.telegram.start()
         # NOTE: watch task is explicitly restarted on each new run
         if self._watching_task is not None:
             self._watching_task.cancel()
@@ -232,6 +236,7 @@ class Twitch:
                 self.gui.set_games({campaign.game for campaign in self.inventory})
                 # Broadcast unwanted items (based on settings)
                 self.gui.broadcast_wanted_items()
+                self.telegram.queue_status_update()
                 # Save state on every inventory fetch
                 self.change_state(State.GAMES_UPDATE)
             elif self._state is State.GAMES_UPDATE:
@@ -241,8 +246,8 @@ class Twitch:
                 for campaign in self.inventory:
                     if not campaign.upcoming:
                         for drop in campaign.drops:
-                            if drop.can_claim:
-                                await drop.claim()
+                            if drop.can_claim and await drop.claim():
+                                self.telegram.notify_drop_claimed(drop)
                 # figure out which games we want based on games_to_watch whitelist
                 self.wanted_games.clear()
                 games_to_watch: list[str] = self.settings.games_to_watch
@@ -482,6 +487,7 @@ class Twitch:
                         active_drop := active_campaign.first_drop
                     ) is not None:
                         active_drop.display(countdown=False, subone=True)
+                    self.telegram.queue_status_update()
                     self._state_change.clear()
                 elif watching_channel is not None and self.can_watch(watching_channel):
                     # Continue watching current channel

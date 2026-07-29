@@ -147,7 +147,18 @@
             "minimum_refresh": "Minimaal verversingsinterval (minuten):",
             "reload_campaigns": "Herlaad Campagnes",
             "mining_benefits": "Mining Voordelen",
-            "mining_benefits_help": "Selecteer welke soorten drops je wilt minen."
+            "mining_benefits_help": "Selecteer welke soorten drops je wilt minen.",
+            "telegram": "Telegram-bot",
+            "telegram_enabled": "Telegram-bot inschakelen",
+            "telegram_bot_token": "Bot-token:",
+            "telegram_chat_id": "Chat-ID:",
+            "telegram_panel_url": "Paneel-URL:",
+            "telegram_notifications": "Meldingen",
+            "telegram_notify_drop_claimed": "Loot geclaimd",
+            "telegram_notify_channel_switch": "Kanaalwissel",
+            "telegram_notify_status_message": "Statusbericht",
+            "telegram_notify_link_updates": "Linkupdates",
+            "telegram_notify_errors": "Fouten"
         },
         "help": {
             "about": "Over Twitch Drops Miner",

@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from src.config.settings import Settings
@@ -12,10 +13,17 @@ class TestSettingsAPI(unittest.IsolatedAsyncioTestCase):
         update_data = {
             "inventory_filters": {"show_upcoming": True},
             "mining_benefits": {"BADGE": True},
+            "telegram_enabled": True,
+            "telegram_bot_token": "123:abc",
+            "telegram_chat_id": "42",
+            "telegram_panel_url": "https://example.com/panel",
+            "telegram_notifications": {"drop_claimed": True},
         }
         model = SettingsUpdate(**update_data)
         self.assertEqual(model.inventory_filters, update_data["inventory_filters"])
         self.assertEqual(model.mining_benefits, update_data["mining_benefits"])
+        self.assertTrue(model.telegram_enabled)
+        self.assertEqual(model.telegram_bot_token, update_data["telegram_bot_token"])
 
     async def test_settings_manager_networking(self):
         # Mock dependencies
@@ -25,6 +33,11 @@ class TestSettingsAPI(unittest.IsolatedAsyncioTestCase):
         mock_settings.inventory_filters = {}
         mock_settings.mining_benefits = {}
         mock_settings.games_to_watch = []
+        mock_settings.telegram_enabled = False
+        mock_settings.telegram_bot_token = ""
+        mock_settings.telegram_chat_id = ""
+        mock_settings.telegram_panel_url = ""
+        mock_settings.telegram_notifications = {}
 
         mock_console = MagicMock()
         mock_callback = MagicMock()
@@ -54,6 +67,24 @@ class TestSettingsAPI(unittest.IsolatedAsyncioTestCase):
         games = ["Game 1"]
         manager.update_settings({"games_to_watch": games})
         mock_callback.assert_called_once()
+
+    async def test_settings_manager_masks_existing_telegram_token(self):
+        mock_broadcaster = AsyncMock()
+        mock_settings = SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_enabled=True,
+            telegram_chat_id="42",
+            telegram_panel_url="https://example.com",
+            telegram_notifications={},
+        )
+        mock_console = MagicMock()
+
+        manager = SettingsManager(mock_broadcaster, mock_settings, mock_console)
+
+        settings = manager.get_settings()
+
+        self.assertTrue(settings["telegram_configured"])
+        self.assertEqual(settings["telegram_bot_token"], "********")
 
 
 if __name__ == "__main__":

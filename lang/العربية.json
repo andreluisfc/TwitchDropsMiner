@@ -147,7 +147,18 @@
             "minimum_refresh": "الحد الأدنى لفترة التحديث (بالدقائق):",
             "reload_campaigns": "إعادة تحميل الحملات",
             "mining_benefits": "فوائد التعدين",
-            "mining_benefits_help": "اختر أنواع الجوائز التي تريد تعدينها."
+            "mining_benefits_help": "اختر أنواع الجوائز التي تريد تعدينها.",
+            "telegram": "روبوت Telegram",
+            "telegram_enabled": "تفعيل روبوت Telegram",
+            "telegram_bot_token": "رمز الروبوت:",
+            "telegram_chat_id": "معرّف الدردشة:",
+            "telegram_panel_url": "رابط اللوحة:",
+            "telegram_notifications": "الإشعارات",
+            "telegram_notify_drop_claimed": "تم استلام الغنيمة",
+            "telegram_notify_channel_switch": "تبديل القناة",
+            "telegram_notify_status_message": "رسالة الحالة",
+            "telegram_notify_link_updates": "تحديثات الرابط",
+            "telegram_notify_errors": "الأخطاء"
         },
         "help": {
             "about": "حول Twitch Drops Miner",

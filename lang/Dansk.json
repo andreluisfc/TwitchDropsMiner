@@ -144,7 +144,18 @@
             "minimum_refresh": "Minimum opdateringsinterval (minutter):",
             "reload_campaigns": "Genindlæs kampagner",
             "mining_benefits": "Mining Fordele",
-            "mining_benefits_help": "Vælg hvilke typer drops du vil mine."
+            "mining_benefits_help": "Vælg hvilke typer drops du vil mine.",
+            "telegram": "Telegram-bot",
+            "telegram_enabled": "Aktivér Telegram-bot",
+            "telegram_bot_token": "Bot-token:",
+            "telegram_chat_id": "Chat-id:",
+            "telegram_panel_url": "Panel-URL:",
+            "telegram_notifications": "Notifikationer",
+            "telegram_notify_drop_claimed": "Loot indløst",
+            "telegram_notify_channel_switch": "Kanalskift",
+            "telegram_notify_status_message": "Statusbesked",
+            "telegram_notify_link_updates": "Linkopdateringer",
+            "telegram_notify_errors": "Fejl"
         },
         "help": {
             "about": "Om Twitch Drops Miner",

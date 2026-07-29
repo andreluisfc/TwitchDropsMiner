@@ -147,7 +147,18 @@
             "minimum_refresh": "Minimum yenileme aralığı (dakika):",
             "reload_campaigns": "Kampanyaları Yeniden Yükle",
             "mining_benefits": "Madencilik Avantajları",
-            "mining_benefits_help": "Hangi tür dropları toplamak istediğinizi seçin."
+            "mining_benefits_help": "Hangi tür dropları toplamak istediğinizi seçin.",
+            "telegram": "Telegram botu",
+            "telegram_enabled": "Telegram botunu etkinleştir",
+            "telegram_bot_token": "Bot tokeni:",
+            "telegram_chat_id": "Sohbet ID'si:",
+            "telegram_panel_url": "Panel URL'si:",
+            "telegram_notifications": "Bildirimler",
+            "telegram_notify_drop_claimed": "Loot alındı",
+            "telegram_notify_channel_switch": "Kanal değişimi",
+            "telegram_notify_status_message": "Durum mesajı",
+            "telegram_notify_link_updates": "Bağlantı güncellemeleri",
+            "telegram_notify_errors": "Hatalar"
         },
         "help": {
             "about": "Twitch Drops Miner Hakkında",

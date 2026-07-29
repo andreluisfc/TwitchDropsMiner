@@ -1064,6 +1064,20 @@ function updateSettingsUI(settings) {
     const proxyInput = document.getElementById('proxy-url');
     if (proxyInput) proxyInput.value = proxyUrl;
 
+    const telegramNotifications = settings.telegram_notifications || {};
+    const telegramTokenInput = document.getElementById('telegram-bot-token');
+    document.getElementById('telegram-enabled').checked = settings.telegram_enabled || false;
+    if (telegramTokenInput && document.activeElement !== telegramTokenInput) {
+        telegramTokenInput.value = settings.telegram_bot_token || '';
+    }
+    document.getElementById('telegram-chat-id').value = settings.telegram_chat_id || '';
+    document.getElementById('telegram-panel-url').value = settings.telegram_panel_url || '';
+    document.getElementById('telegram-notify-drop-claimed').checked = telegramNotifications.drop_claimed !== false;
+    document.getElementById('telegram-notify-channel-switch').checked = telegramNotifications.channel_switch !== false;
+    document.getElementById('telegram-notify-status-message').checked = telegramNotifications.status_message !== false;
+    document.getElementById('telegram-notify-link-updates').checked = telegramNotifications.link_updates !== false;
+    document.getElementById('telegram-notify-errors').checked = telegramNotifications.errors !== false;
+
     const proxyIndicator = document.getElementById('proxy-indicator');
     if (proxyIndicator) {
         proxyIndicator.style.display = proxyUrl ? 'inline-flex' : 'none';
@@ -1531,6 +1545,17 @@ async function saveSettings() {
             "BADGE": document.getElementById('mining-benefit-badge')?.checked,
             "EMOTE": document.getElementById('mining-benefit-emote')?.checked,
             "UNKNOWN": document.getElementById('mining-benefit-unknown')?.checked
+        },
+        telegram_enabled: document.getElementById('telegram-enabled').checked,
+        telegram_bot_token: document.getElementById('telegram-bot-token').value,
+        telegram_chat_id: document.getElementById('telegram-chat-id').value,
+        telegram_panel_url: document.getElementById('telegram-panel-url').value,
+        telegram_notifications: {
+            drop_claimed: document.getElementById('telegram-notify-drop-claimed').checked,
+            channel_switch: document.getElementById('telegram-notify-channel-switch').checked,
+            status_message: document.getElementById('telegram-notify-status-message').checked,
+            link_updates: document.getElementById('telegram-notify-link-updates').checked,
+            errors: document.getElementById('telegram-notify-errors').checked
         }
     };
 
@@ -1701,6 +1726,20 @@ function applyTranslations(t) {
         const actionsHeader = document.getElementById('settings-actions-header');
         if (actionsHeader) actionsHeader.textContent = t.gui.settings.actions;
 
+        const telegramHeader = document.getElementById('settings-telegram-header');
+        if (telegramHeader) telegramHeader.textContent = t.gui.settings.telegram;
+
+        const telegramNotificationsHeader = document.getElementById('settings-telegram-notifications-header');
+        if (telegramNotificationsHeader) telegramNotificationsHeader.textContent = t.gui.settings.telegram_notifications;
+
+        const setInputLabel = (inputId, labelText) => {
+            const label = settingsTab.querySelector(`label:has(#${inputId})`);
+            if (!label) return;
+            const input = label.querySelector('input');
+            label.textContent = labelText + ' ';
+            label.appendChild(input);
+        };
+
         const darkModeLabel = settingsTab.querySelector('label:has(#dark-mode)');
         if (darkModeLabel) {
             const checkbox = darkModeLabel.querySelector('input');
@@ -1722,6 +1761,17 @@ function applyTranslations(t) {
             refreshLabel.textContent = t.gui.settings.minimum_refresh + ' ';
             refreshLabel.appendChild(input);
         }
+
+        const telegramEnabledLabel = settingsTab.querySelector('label:has(#telegram-enabled)');
+        if (telegramEnabledLabel) {
+            const checkbox = telegramEnabledLabel.querySelector('input');
+            telegramEnabledLabel.textContent = '';
+            telegramEnabledLabel.appendChild(checkbox);
+            telegramEnabledLabel.appendChild(document.createTextNode(' ' + t.gui.settings.telegram_enabled));
+        }
+        setInputLabel('telegram-bot-token', t.gui.settings.telegram_bot_token);
+        setInputLabel('telegram-chat-id', t.gui.settings.telegram_chat_id);
+        setInputLabel('telegram-panel-url', t.gui.settings.telegram_panel_url);
 
         const benefitsHelp = document.getElementById('settings-benefits-help');
         if (benefitsHelp && t.gui.settings.mining_benefits_help) benefitsHelp.textContent = t.gui.settings.mining_benefits_help;
@@ -1885,6 +1935,12 @@ function applyTranslations(t) {
         updateLabel('mining-benefit-badge', f.badge);
         updateLabel('mining-benefit-emote', f.emote);
         updateLabel('mining-benefit-unknown', f.other);
+
+        updateLabel('telegram-notify-drop-claimed', t.gui.settings.telegram_notify_drop_claimed);
+        updateLabel('telegram-notify-channel-switch', t.gui.settings.telegram_notify_channel_switch);
+        updateLabel('telegram-notify-status-message', t.gui.settings.telegram_notify_status_message);
+        updateLabel('telegram-notify-link-updates', t.gui.settings.telegram_notify_link_updates);
+        updateLabel('telegram-notify-errors', t.gui.settings.telegram_notify_errors);
     }
 
     // Update header elements
@@ -1986,6 +2042,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('verify-proxy-btn').addEventListener('click', verifyProxy);
     document.getElementById('reload-btn').addEventListener('click', reloadCampaigns);
 
+    [
+        'telegram-enabled',
+        'telegram-bot-token',
+        'telegram-chat-id',
+        'telegram-panel-url',
+        'telegram-notify-drop-claimed',
+        'telegram-notify-channel-switch',
+        'telegram-notify-status-message',
+        'telegram-notify-link-updates',
+        'telegram-notify-errors',
+    ].forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) element.addEventListener('change', saveSettings);
+    });
 
     // Games to watch management
     document.getElementById('select-all-btn').addEventListener('click', selectAllGames);

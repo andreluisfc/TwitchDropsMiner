@@ -211,6 +211,49 @@
                 </section>
 
                 <section class="settings-section">
+                    <h2 id="settings-telegram-header">Telegram Bot</h2>
+                    <label>
+                        <input type="checkbox" id="telegram-enabled"> Enable Telegram bot
+                    </label>
+                    <label>
+                        Bot Token:
+                        <input type="password" id="telegram-bot-token" autocomplete="off"
+                            placeholder="Leave blank to use TELEGRAM_BOT_TOKEN">
+                    </label>
+                    <label>
+                        Chat ID:
+                        <input type="text" id="telegram-chat-id" placeholder="Leave blank to use TELEGRAM_CHAT_ID">
+                    </label>
+                    <label>
+                        Panel URL:
+                        <input type="url" id="telegram-panel-url" placeholder="https://example.com/tg/gate">
+                    </label>
+                    <h3 id="settings-telegram-notifications-header">Notifications</h3>
+                    <div class="benefits-filter filter-checkboxes">
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="telegram-notify-drop-claimed" checked />
+                            <span>Loot claimed</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="telegram-notify-channel-switch" checked />
+                            <span>Channel switch</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="telegram-notify-status-message" checked />
+                            <span>Status message</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="telegram-notify-link-updates" checked />
+                            <span>Link updates</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="telegram-notify-errors" checked />
+                            <span>Errors</span>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="settings-section">
                     <h2 id="settings-benefits-header">Mining Benefits</h2>
                     <p id="settings-benefits-help" class="help-text">Select which types of drops you want to
                         mine.</p>

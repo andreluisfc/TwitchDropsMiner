@@ -208,7 +208,8 @@ class MessageHandlerService:
 
             drop.update_claim(message["data"]["drop_instance_id"])
             campaign = drop.campaign
-            await drop.claim()
+            if await drop.claim():
+                self._twitch.telegram.notify_drop_claimed(drop)
             drop.display()
 
             # About 4-20s after claiming the drop, next drop can be started
@@ -251,6 +252,7 @@ class MessageHandlerService:
         if drop is not None and drop.can_earn(self._twitch.watching_channel.get_with_default(None)):
             # the received payload is for the drop we expected
             drop.update_minutes(message["data"]["current_progress_min"])
+            self._twitch.telegram.queue_status_update()
 
     @task_wrapper
     async def process_notifications(self, user_id: int, message: JsonType) -> None:

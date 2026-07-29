@@ -23,6 +23,7 @@ dashboard. It sends Twitch watch events without downloading the stream itself.
 - **Smart channel selection** — prioritizes eligible channels, preferred games, and viewers
 - **Persistent sessions** — saves OAuth login state between runs
 - **Web dashboard** — manages campaigns, channels, inventory, settings, and login status
+- **Telegram bot updates** — sends loot/channel notifications and keeps a live status message
 - **Headless deployment** — runs locally, remotely, or in Docker without a desktop GUI
 - **Safe rendering** — builds dynamic translated content with DOM APIs instead of raw HTML
 
@@ -72,6 +73,15 @@ Then open <http://localhost:8080>.
 3. Choose the games you want to prioritize. You can also search for a game, select
    **Add Game**, and then select **Reload**.
 4. Leave the miner running while it selects eligible channels and tracks drop progress.
+
+### Telegram bot
+
+The Settings tab can enable Telegram notifications for claimed loot, channel switches,
+link changes, errors, and a continuously edited status message with the current stream
+and wanted loot queue. Configure the bot token, chat ID, and optional panel URL in the
+web app. Docker deployments can alternatively provide `TELEGRAM_BOT_TOKEN`,
+`TELEGRAM_CHAT_ID`, and `TELEGRAM_PANEL_URL` environment variables so secrets do not
+need to be stored in `settings.json`.
 
 > [!NOTE]
 > Your Twitch account must be linked to the relevant game accounts. Review your

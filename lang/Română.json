@@ -147,7 +147,18 @@
             "minimum_refresh": "Interval minim de reîmprospătare (minute):",
             "reload_campaigns": "Reîncarcă campaniile",
             "mining_benefits": "Beneficii Minerit",
-            "mining_benefits_help": "Selectați ce tipuri de drops doriți să minați."
+            "mining_benefits_help": "Selectați ce tipuri de drops doriți să minați.",
+            "telegram": "Bot Telegram",
+            "telegram_enabled": "Activează botul Telegram",
+            "telegram_bot_token": "Token bot:",
+            "telegram_chat_id": "ID chat:",
+            "telegram_panel_url": "URL panou:",
+            "telegram_notifications": "Notificări",
+            "telegram_notify_drop_claimed": "Loot revendicat",
+            "telegram_notify_channel_switch": "Schimbare canal",
+            "telegram_notify_status_message": "Mesaj de stare",
+            "telegram_notify_link_updates": "Actualizări link",
+            "telegram_notify_errors": "Erori"
         },
         "help": {
             "about": "Despre Twitch Drops Miner",
