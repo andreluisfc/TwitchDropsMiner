@@ -65,6 +65,8 @@ def test_telegram_status_message_includes_watching_drop_and_queue():
     assert message.count("🎮 <a") == 1
     assert "  • 🎁 Drop A" in message
     assert "  • 🎁 Drop B" in message
+    assert "🏆 <b>Recently claimed</b>" in message
+    assert "No drops claimed yet." in message
     assert "Open panel" not in message
 
 
@@ -107,6 +109,117 @@ def test_telegram_queue_groups_loot_by_game():
         '🎮 <a href="https://example.com/campaign-b">Game B</a>',
         "  • 🎁 Drop C",
     ]
+
+
+def test_telegram_recent_claimed_drops_are_grouped_by_game():
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="",
+            telegram_chat_id="",
+            telegram_enabled=False,
+            telegram_panel_url="",
+            telegram_notifications={},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+    )
+    service = TelegramService(twitch)
+    service._state["recent_claimed_drops"] = [
+        {
+            "drop_id": "drop-a",
+            "drop_name": "Drop A",
+            "game_name": "Game A",
+            "campaign_url": "https://example.com/campaign-a",
+            "claimed_at": "2026-07-29T13:10:00-03:00",
+        },
+        {
+            "drop_id": "drop-c",
+            "drop_name": "Drop C",
+            "game_name": "Game B",
+            "campaign_url": "https://example.com/campaign-b",
+            "claimed_at": "2026-07-29T13:30:00-03:00",
+        },
+        {
+            "drop_id": "drop-b",
+            "drop_name": "Drop B",
+            "game_name": "Game A",
+            "campaign_url": "https://example.com/campaign-a",
+            "claimed_at": "2026-07-29T13:20:00-03:00",
+        },
+    ]
+
+    lines = service._format_claimed_lines()
+
+    assert lines == [
+        '🎮 <a href="https://example.com/campaign-a">Game A</a>',
+        "  • ✅ Drop A · 29/07 13:10",
+        "  • ✅ Drop B · 29/07 13:20",
+        '🎮 <a href="https://example.com/campaign-b">Game B</a>',
+        "  • ✅ Drop C · 29/07 13:30",
+    ]
+
+
+def test_telegram_drop_claimed_updates_status_without_separate_message(monkeypatch):
+    monkeypatch.setattr("src.services.telegram_service.json_save", MagicMock())
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+    )
+    service = TelegramService(twitch)
+    service.queue_status_update = MagicMock()
+    service._send_message = AsyncMock()
+    campaign = SimpleNamespace(
+        game=SimpleNamespace(name="Game A"),
+        campaign_url="https://example.com/campaign-a",
+    )
+    drop = SimpleNamespace(id="drop-a", name="Drop A", campaign=campaign)
+
+    service.notify_drop_claimed(drop)
+    service.notify_drop_claimed(drop)
+
+    service._send_message.assert_not_called()
+    service.queue_status_update.assert_called()
+    assert service._state["recent_claimed_drops"] == [
+        {
+            "drop_id": "drop-a",
+            "drop_name": "Drop A",
+            "game_name": "Game A",
+            "campaign_url": "https://example.com/campaign-a",
+            "claimed_at": service._state["recent_claimed_drops"][0]["claimed_at"],
+        }
+    ]
+
+
+def test_telegram_channel_switch_updates_status_without_separate_message():
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+    )
+    service = TelegramService(twitch)
+    service.queue_status_update = MagicMock()
+    service._send_message = AsyncMock()
+
+    service.notify_channel_switch(SimpleNamespace(id=1))
+
+    service._send_message.assert_not_called()
+    service.queue_status_update.assert_called_once()
 
 
 @pytest.mark.asyncio

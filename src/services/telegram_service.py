@@ -27,6 +27,14 @@ logger = logging.getLogger("TwitchDrops")
 
 TELEGRAM_STATE_PATH = DATA_DIR / "telegram_state.json"
 TELEGRAM_TOKEN_PLACEHOLDER = "********"
+RECENT_CLAIMED_LIMIT = 12
+TELEGRAM_STATE_DEFAULTS: dict[str, Any] = {
+    "status_message_id": None,
+    "status_message_kind": None,
+    "status_photo_url": None,
+    "update_offset": None,
+    "recent_claimed_drops": [],
+}
 
 
 class TelegramService:
@@ -40,9 +48,7 @@ class TelegramService:
         self._polling_task: asyncio.Task[None] | None = None
         self._last_channel_id: int | None = None
         self._last_panel_url: str = self._panel_url
-        self._state: dict[str, Any] = json_load(
-            TELEGRAM_STATE_PATH, {"status_message_id": None, "update_offset": None}, merge=True
-        )
+        self._state: dict[str, Any] = json_load(TELEGRAM_STATE_PATH, TELEGRAM_STATE_DEFAULTS, merge=True)
 
     @property
     def _token(self) -> str:
@@ -119,34 +125,23 @@ class TelegramService:
             await self.start()
             if previous_panel_url != self._panel_url:
                 await self._sync_panel_button()
-                if self._notification_enabled("link_updates"):
-                    await self._send_message("Telegram panel link updated.")
             self.queue_status_update(immediate=True)
         else:
             await self.stop()
         self._last_panel_url = self._panel_url
 
     def notify_channel_switch(self, channel: Channel) -> None:
-        if not self.is_enabled or not self._notification_enabled("channel_switch"):
-            return
         if self._last_channel_id == channel.id:
             return
         self._last_channel_id = channel.id
-        game_name = channel.game.name if channel.game is not None else "Unknown game"
-        self._create_task(self._send_message(f"Now watching {channel.name} for {game_name}."))
         self.queue_status_update()
 
     def notify_drop_claimed(self, drop: TimedDrop) -> None:
-        if not self.is_enabled or not self._notification_enabled("drop_claimed"):
-            return
-        message = f"Drop claimed: {drop.name}\nGame: {drop.campaign.game.name}"
-        self._create_task(self._send_message(message))
+        self._remember_claimed_drop(drop)
         self.queue_status_update()
 
     def notify_error(self, message: str) -> None:
-        if not self.is_enabled or not self._notification_enabled("errors"):
-            return
-        self._create_task(self._send_message(f"Miner error: {message}"))
+        logger.warning("Miner error reported to Telegram status service: %s", message)
 
     def queue_status_update(self, *, immediate: bool = False) -> None:
         if not self.is_enabled or not self._notification_enabled("status_message"):
@@ -236,6 +231,9 @@ class TelegramService:
                 "",
                 progress,
                 "",
+                "🏆 <b>Recently claimed</b>",
+                *self._format_claimed_lines(),
+                "",
                 "🧭 <b>Next loot queue</b>",
                 *queue_lines,
             ]
@@ -267,6 +265,72 @@ class TelegramService:
                         return lines
             lines.extend(game_lines)
         return lines or ["✨ No loot queued right now."]
+
+    def _remember_claimed_drop(self, drop: TimedDrop) -> None:
+        recent = [
+            entry
+            for entry in self._state.get("recent_claimed_drops", [])
+            if isinstance(entry, dict)
+        ]
+        drop_id = str(getattr(drop, "id", ""))
+        entry = {
+            "drop_id": drop_id,
+            "drop_name": str(getattr(drop, "name", "Unknown drop")),
+            "game_name": str(getattr(drop.campaign.game, "name", "Unknown game")),
+            "campaign_url": str(getattr(drop.campaign, "campaign_url", "")),
+            "claimed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+        recent = [
+            item
+            for item in recent
+            if not self._same_claimed_drop(item, entry)
+        ]
+        self._state["recent_claimed_drops"] = [entry, *recent][:RECENT_CLAIMED_LIMIT]
+        json_save(TELEGRAM_STATE_PATH, self._state, sort=True)
+
+    def _same_claimed_drop(self, existing: dict[str, Any], new: dict[str, str]) -> bool:
+        if existing.get("drop_id") and new.get("drop_id"):
+            return existing.get("drop_id") == new.get("drop_id")
+        return (
+            existing.get("drop_name") == new.get("drop_name")
+            and existing.get("game_name") == new.get("game_name")
+            and existing.get("campaign_url") == new.get("campaign_url")
+        )
+
+    def _format_claimed_lines(self, limit: int = 8) -> list[str]:
+        recent = [
+            entry
+            for entry in self._state.get("recent_claimed_drops", [])[:limit]
+            if isinstance(entry, dict)
+        ]
+        if not recent:
+            return ["✨ No drops claimed yet."]
+
+        lines: list[str] = []
+        grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for entry in recent:
+            game_name = str(entry.get("game_name") or "Unknown game")
+            campaign_url = str(entry.get("campaign_url") or "")
+            game_key = (game_name, campaign_url)
+            grouped.setdefault(game_key, []).append(entry)
+
+        for (game_name, campaign_url), entries in grouped.items():
+            lines.append(f"🎮 {self._game_campaign_link(game_name, campaign_url)}")
+            for entry in entries:
+                claimed_at = self._format_claimed_at(entry.get("claimed_at"))
+                lines.append(
+                    f"  • ✅ {self._html(entry.get('drop_name') or 'Unknown drop')} · {claimed_at}"
+                )
+        return lines
+
+    def _format_claimed_at(self, value: object) -> str:
+        if not value:
+            return "unknown time"
+        try:
+            claimed_at = datetime.fromisoformat(str(value))
+        except ValueError:
+            return self._html(value)
+        return self._html(claimed_at.astimezone().strftime("%d/%m %H:%M"))
 
     def _save_status_state(self, message_id: int | None) -> None:
         self._state["status_message_id"] = message_id
