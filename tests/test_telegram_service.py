@@ -71,3 +71,31 @@ def test_telegram_status_image_uses_current_game_art():
     photo_url = TelegramService(twitch)._get_status_photo_url()
 
     assert photo_url == "https://example.com/game-600x800.jpg"
+
+
+def test_telegram_status_image_falls_back_to_queue_art():
+    channel = SimpleNamespace(
+        id=1,
+        name="streamer",
+        game=SimpleNamespace(name="Game A", box_art_url=None),
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="",
+            telegram_chat_id="",
+            telegram_enabled=False,
+            telegram_panel_url="",
+            telegram_notifications={},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+    )
+    twitch.watching_channel.get_with_default.return_value = channel
+    twitch.gui.get_wanted_game_tree.return_value = [
+        {"game_name": "Game A", "game_icon": "https://example.com/queue-{width}x{height}.jpg"}
+    ]
+
+    photo_url = TelegramService(twitch)._get_status_photo_url()
+
+    assert photo_url == "https://example.com/queue-600x800.jpg"

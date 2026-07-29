@@ -284,8 +284,16 @@ class TelegramService:
 
     def _get_status_photo_url(self) -> str | None:
         watching_channel = self._twitch.watching_channel.get_with_default(None)
-        if watching_channel is not None and watching_channel.game is not None:
-            return self._normalize_box_art_url(getattr(watching_channel.game, "box_art_url", None))
+        if (
+            watching_channel is not None
+            and watching_channel.game is not None
+            and (
+                photo_url := self._normalize_box_art_url(
+                    getattr(watching_channel.game, "box_art_url", None)
+                )
+            )
+        ):
+            return photo_url
 
         try:
             tree = self._twitch.gui.get_wanted_game_tree()
