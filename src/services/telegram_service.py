@@ -6,9 +6,9 @@ import asyncio
 import html
 import logging
 import os
-import re
 from collections.abc import Coroutine
 from contextlib import suppress
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -27,8 +27,6 @@ logger = logging.getLogger("TwitchDrops")
 
 TELEGRAM_STATE_PATH = DATA_DIR / "telegram_state.json"
 TELEGRAM_TOKEN_PLACEHOLDER = "********"
-TELEGRAM_PHOTO_CAPTION_LIMIT = 1024
-BOX_ART_SIZE_PATTERN = re.compile(r"-\d+x\d+(?=\.(?:jpg|png|gif)(?:\?|$))", re.I)
 
 
 class TelegramService:
@@ -39,10 +37,11 @@ class TelegramService:
         self._session: aiohttp.ClientSession | None = None
         self._status_task: asyncio.Task[None] | None = None
         self._settings_task: asyncio.Task[None] | None = None
+        self._polling_task: asyncio.Task[None] | None = None
         self._last_channel_id: int | None = None
         self._last_panel_url: str = self._panel_url
         self._state: dict[str, Any] = json_load(
-            TELEGRAM_STATE_PATH, {"status_message_id": None}, merge=True
+            TELEGRAM_STATE_PATH, {"status_message_id": None, "update_offset": None}, merge=True
         )
 
     @property
@@ -81,16 +80,19 @@ class TelegramService:
             self._session = aiohttp.ClientSession()
         await self._sync_panel_button()
         self.queue_status_update(immediate=True)
+        if self._polling_task is None or self._polling_task.done():
+            self._polling_task = self._create_task(self._poll_updates())
 
     async def stop(self) -> None:
         current_task = asyncio.current_task()
-        for task in (self._status_task, self._settings_task):
+        for task in (self._status_task, self._settings_task, self._polling_task):
             if task is not None and task is not current_task:
                 task.cancel()
                 with suppress(asyncio.CancelledError):
                     await task
         self._status_task = None
         self._settings_task = None
+        self._polling_task = None
         if self._session is not None:
             await self._session.close()
             self._session = None
@@ -108,7 +110,7 @@ class TelegramService:
         if message_id := self._state.get("status_message_id"):
             await self._api("deleteMessage", chat_id=self._chat_id, message_id=message_id)
 
-        self._save_status_state(None, "text", None)
+        self._save_status_state(None)
         return await self._send_or_edit_status()
 
     async def _apply_settings_change(self) -> None:
@@ -160,70 +162,37 @@ class TelegramService:
         await self._send_or_edit_status()
 
     async def _send_or_edit_status(self) -> bool:
-        photo_url = self._get_status_photo_url()
-        message = self._format_status_message(queue_limit=5 if photo_url else 8)
+        message = self._format_status_message()
         message_id = self._state.get("status_message_id")
         message_kind = self._state.get("status_message_kind")
-        if message_id is not None and photo_url:
+
+        if message_id is not None and message_kind == "photo":
+            await self._api("deleteMessage", chat_id=self._chat_id, message_id=message_id)
+            self._save_status_state(None)
+            message_id = None
+
+        if message_id is not None:
             result = await self._api(
-                "editMessageMedia",
+                "editMessageText",
                 chat_id=self._chat_id,
                 message_id=message_id,
-                media={
-                    "type": "photo",
-                    "media": photo_url,
-                    "caption": self._truncate_caption(message),
-                    "parse_mode": "HTML",
-                },
-            )
-            if result:
-                self._save_status_state(message_id, "photo", photo_url)
-                return True
-            await self._api("deleteMessage", chat_id=self._chat_id, message_id=message_id)
-        elif message_id is not None:
-            method = "editMessageCaption" if message_kind == "photo" else "editMessageText"
-            payload = {
-                "chat_id": self._chat_id,
-                "message_id": message_id,
-                "parse_mode": "HTML",
-            }
-            if method == "editMessageCaption":
-                payload["caption"] = self._truncate_caption(message)
-            else:
-                payload["text"] = message
-                payload["disable_web_page_preview"] = True
-            result = await self._api(
-                method,
-                **payload,
-            )
-            if result:
-                self._save_status_state(message_id, message_kind or "text", None)
-                return True
-
-        if photo_url:
-            result = await self._api(
-                "sendPhoto",
-                chat_id=self._chat_id,
-                photo=photo_url,
-                caption=self._truncate_caption(message),
-                parse_mode="HTML",
-            )
-            message_kind = "photo"
-        else:
-            result = await self._api(
-                "sendMessage",
-                chat_id=self._chat_id,
                 text=message,
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
-            message_kind = "text"
+            if result:
+                self._save_status_state(message_id)
+                return True
+
+        result = await self._api(
+            "sendMessage",
+            chat_id=self._chat_id,
+            text=message,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
         if result and isinstance(result.get("result"), dict):
-            self._save_status_state(
-                result["result"].get("message_id"),
-                message_kind,
-                photo_url if message_kind == "photo" else None,
-            )
+            self._save_status_state(result["result"].get("message_id"))
             return True
         return False
 
@@ -232,13 +201,7 @@ class TelegramService:
         if watching_channel is None:
             watching = "😴 <b>Status:</b> idle"
         else:
-            game_name = (
-                watching_channel.game.name if watching_channel.game is not None else "Unknown game"
-            )
-            watching = (
-                f"📺 <b>Watching:</b> {self._html(watching_channel.name)}\n"
-                f"🎮 <b>Game:</b> {self._html(game_name)}"
-            )
+            watching = f"📺 <b>Watching:</b> {self._channel_link(watching_channel)}"
 
         active_drop = None
         if watching_channel is not None:
@@ -252,7 +215,10 @@ class TelegramService:
             percent = 0
             if active_drop.required_minutes:
                 percent = int(active_drop.current_minutes / active_drop.required_minutes * 100)
+            game_name = self._html(active_drop.campaign.game.name)
+            campaign_url = self._html(active_drop.campaign.campaign_url)
             progress = (
+                f'🎮 <b>Campaign:</b> <a href="{campaign_url}">{game_name}</a>\n'
                 f"🎁 <b>Current loot:</b> {self._html(active_drop.name)}\n"
                 f"⏱ <b>Progress:</b> {active_drop.current_minutes}/"
                 f"{active_drop.required_minutes} min ({percent}%)\n"
@@ -260,27 +226,24 @@ class TelegramService:
             )
 
         queue_lines = self._format_queue_lines(limit=queue_limit)
-        panel_line = (
-            f'\n🔗 <a href="{self._html(self._panel_url)}">Open panel</a>'
-            if self._panel_url.startswith("https://")
-            else ""
-        )
         return "\n".join(
             [
                 "⚡ <b>Twitch Drops Miner</b>",
                 "━━━━━━━━━━━━━━━━",
+                f"🕒 <b>Updated:</b> {self._html(self._updated_at())}",
+                "",
                 watching,
                 "",
                 progress,
                 "",
                 "🧭 <b>Next loot queue</b>",
                 *queue_lines,
-                panel_line,
             ]
         )
 
     def _format_queue_lines(self, limit: int = 8) -> list[str]:
         lines: list[str] = []
+        shown_drops = 0
         try:
             tree = self._twitch.gui.get_wanted_game_tree()
         except Exception:
@@ -289,65 +252,76 @@ class TelegramService:
 
         for game in tree:
             game_name = game.get("game_name", "Unknown game")
+            game_lines: list[str] = []
             for campaign in game.get("campaigns", []):
+                campaign_url = campaign.get("url")
                 for drop in campaign.get("drops", []):
-                    lines.append(
-                        f"• 🎮 {self._html(game_name)}: 🎁 "
-                        f"{self._html(drop.get('name', 'Unknown drop'))}"
-                    )
-                    if len(lines) >= limit:
+                    if not game_lines:
+                        game_lines.append(
+                            f"🎮 {self._game_campaign_link(game_name, campaign_url)}"
+                        )
+                    game_lines.append(f"  • 🎁 {self._html(drop.get('name', 'Unknown drop'))}")
+                    shown_drops += 1
+                    if shown_drops >= limit:
+                        lines.extend(game_lines)
                         return lines
+            lines.extend(game_lines)
         return lines or ["✨ No loot queued right now."]
 
-    def _get_status_photo_url(self) -> str | None:
-        watching_channel = self._twitch.watching_channel.get_with_default(None)
-        if (
-            watching_channel is not None
-            and watching_channel.game is not None
-            and (
-                photo_url := self._normalize_box_art_url(
-                    getattr(watching_channel.game, "box_art_url", None)
-                )
-            )
-        ):
-            return photo_url
-
-        try:
-            tree = self._twitch.gui.get_wanted_game_tree()
-        except Exception:
-            logger.debug("Could not find Telegram status image", exc_info=True)
-            return None
-
-        for game in tree:
-            if photo_url := self._normalize_box_art_url(game.get("game_icon")):
-                return photo_url
-        return None
-
-    def _save_status_state(
-        self, message_id: int | None, message_kind: str, photo_url: str | None
-    ) -> None:
+    def _save_status_state(self, message_id: int | None) -> None:
         self._state["status_message_id"] = message_id
-        self._state["status_message_kind"] = message_kind
-        self._state["status_photo_url"] = photo_url
+        self._state["status_message_kind"] = "text"
+        self._state["status_photo_url"] = None
         json_save(TELEGRAM_STATE_PATH, self._state, sort=True)
-
-    def _normalize_box_art_url(self, url: str | None) -> str | None:
-        if not url:
-            return None
-        sized_url = url.replace("{width}", "600").replace("{height}", "800")
-        return BOX_ART_SIZE_PATTERN.sub("-600x800", sized_url)
 
     def _progress_bar(self, percent: int) -> str:
         filled = min(10, max(0, round(percent / 10)))
         return "▰" * filled + "▱" * (10 - filled)
 
-    def _truncate_caption(self, caption: str) -> str:
-        if len(caption) <= TELEGRAM_PHOTO_CAPTION_LIMIT:
-            return caption
-        return caption[: TELEGRAM_PHOTO_CAPTION_LIMIT - 1].rstrip() + "…"
-
     def _html(self, value: object) -> str:
         return html.escape(str(value), quote=True)
+
+    def _updated_at(self) -> str:
+        return datetime.now().astimezone().strftime("%d/%m/%Y %H:%M:%S")
+
+    def _channel_link(self, channel: Channel) -> str:
+        channel_url = getattr(channel, "url", None)
+        url = str(channel_url) if channel_url is not None else f"https://www.twitch.tv/{channel.name}"
+        return f'<a href="{self._html(url)}">{self._html(channel.name)}</a>'
+
+    def _game_campaign_link(self, game_name: object, campaign_url: object | None) -> str:
+        if campaign_url:
+            return f'<a href="{self._html(campaign_url)}">{self._html(game_name)}</a>'
+        return self._html(game_name)
+
+    async def _poll_updates(self) -> None:
+        while self.is_enabled:
+            offset = self._state.get("update_offset")
+            result = await self._api(
+                "getUpdates",
+                offset=offset,
+                timeout=25,
+                allowed_updates=["message"],
+                _timeout=35,
+            )
+            if result and isinstance(result.get("result"), list):
+                for update in result["result"]:
+                    self._state["update_offset"] = update["update_id"] + 1
+                    await self._handle_update(update)
+                json_save(TELEGRAM_STATE_PATH, self._state, sort=True)
+            else:
+                await asyncio.sleep(5)
+
+    async def _handle_update(self, update: dict[str, Any]) -> None:
+        message = update.get("message") or {}
+        chat = message.get("chat") or {}
+        if str(chat.get("id")) != self._chat_id:
+            return
+
+        text = str(message.get("text") or "").strip().lower()
+        if text.startswith("/start"):
+            await self._sync_panel_button()
+            await self.resend_status_message()
 
     async def _sync_panel_button(self) -> None:
         panel_url = self._panel_url
@@ -376,9 +350,10 @@ class TelegramService:
             return None
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession()
+        request_timeout = payload.pop("_timeout", 15)
         url = f"https://api.telegram.org/bot{self._token}/{method}"
         try:
-            async with self._session.post(url, json=payload, timeout=15) as response:
+            async with self._session.post(url, json=payload, timeout=request_timeout) as response:
                 data = await response.json(content_type=None)
                 description = str(data.get("description", "")).lower()
                 if "message is not modified" in description:

@@ -10,13 +10,20 @@ def test_telegram_status_message_includes_watching_drop_and_queue():
     channel = SimpleNamespace(
         id=1,
         name="streamer",
+        url="https://www.twitch.tv/streamer",
         game=SimpleNamespace(
             name="Game A",
-            box_art_url="https://example.com/game-{width}x{height}.jpg",
         ),
     )
-    drop = SimpleNamespace(name="Drop A", current_minutes=10, required_minutes=30)
-    campaign = SimpleNamespace(first_drop=drop)
+    campaign = SimpleNamespace(
+        first_drop=None,
+        game=SimpleNamespace(name="Game A"),
+        campaign_url="https://www.twitch.tv/drops/campaigns?dropID=campaign-a",
+    )
+    drop = SimpleNamespace(
+        name="Drop A", current_minutes=10, required_minutes=30, campaign=campaign
+    )
+    campaign.first_drop = drop
     twitch = SimpleNamespace(
         settings=SimpleNamespace(
             telegram_bot_token="",
@@ -33,29 +40,35 @@ def test_telegram_status_message_includes_watching_drop_and_queue():
     twitch.gui.get_wanted_game_tree.return_value = [
         {
             "game_name": "Game A",
-            "campaigns": [{"drops": [{"name": "Drop A"}, {"name": "Drop B"}]}],
+            "campaigns": [
+                {
+                    "url": "https://www.twitch.tv/drops/campaigns?dropID=campaign-a",
+                    "drops": [{"name": "Drop A"}, {"name": "Drop B"}],
+                }
+            ],
         }
     ]
 
     message = TelegramService(twitch)._format_status_message()
 
-    assert "📺 <b>Watching:</b> streamer" in message
-    assert "🎮 <b>Game:</b> Game A" in message
+    assert '📺 <b>Watching:</b> <a href="https://www.twitch.tv/streamer">streamer</a>' in message
+    assert (
+        '🎮 <b>Campaign:</b> <a href="https://www.twitch.tv/drops/campaigns?dropID=campaign-a">Game A</a>'
+        in message
+    )
     assert "🎁 <b>Current loot:</b> Drop A" in message
     assert "⏱ <b>Progress:</b> 10/30 min (33%)" in message
-    assert "• 🎮 Game A: 🎁 Drop A" in message
-    assert "• 🎮 Game A: 🎁 Drop B" in message
-
-
-def test_telegram_status_image_uses_current_game_art():
-    channel = SimpleNamespace(
-        id=1,
-        name="streamer",
-        game=SimpleNamespace(
-            name="Game A",
-            box_art_url="https://example.com/game-{width}x{height}.jpg",
-        ),
+    assert (
+        '🎮 <a href="https://www.twitch.tv/drops/campaigns?dropID=campaign-a">Game A</a>'
+        in message
     )
+    assert message.count("🎮 <a") == 1
+    assert "  • 🎁 Drop A" in message
+    assert "  • 🎁 Drop B" in message
+    assert "Open panel" not in message
+
+
+def test_telegram_queue_groups_loot_by_game():
     twitch = SimpleNamespace(
         settings=SimpleNamespace(
             telegram_bot_token="",
@@ -68,39 +81,59 @@ def test_telegram_status_image_uses_current_game_art():
         gui=MagicMock(),
         get_active_campaign=MagicMock(return_value=None),
     )
-    twitch.watching_channel.get_with_default.return_value = channel
-
-    photo_url = TelegramService(twitch)._get_status_photo_url()
-
-    assert photo_url == "https://example.com/game-600x800.jpg"
-
-
-def test_telegram_status_image_falls_back_to_queue_art():
-    channel = SimpleNamespace(
-        id=1,
-        name="streamer",
-        game=SimpleNamespace(name="Game A", box_art_url=None),
-    )
-    twitch = SimpleNamespace(
-        settings=SimpleNamespace(
-            telegram_bot_token="",
-            telegram_chat_id="",
-            telegram_enabled=False,
-            telegram_panel_url="",
-            telegram_notifications={},
-        ),
-        watching_channel=MagicMock(),
-        gui=MagicMock(),
-        get_active_campaign=MagicMock(return_value=None),
-    )
-    twitch.watching_channel.get_with_default.return_value = channel
+    twitch.watching_channel.get_with_default.return_value = None
     twitch.gui.get_wanted_game_tree.return_value = [
-        {"game_name": "Game A", "game_icon": "https://example.com/queue-120x160.jpg"}
+        {
+            "game_name": "Game A",
+            "campaigns": [
+                {
+                    "url": "https://example.com/campaign-a",
+                    "drops": [{"name": "Drop A"}, {"name": "Drop B"}],
+                }
+            ],
+        },
+        {
+            "game_name": "Game B",
+            "campaigns": [{"url": "https://example.com/campaign-b", "drops": [{"name": "Drop C"}]}],
+        },
     ]
 
-    photo_url = TelegramService(twitch)._get_status_photo_url()
+    lines = TelegramService(twitch)._format_queue_lines()
 
-    assert photo_url == "https://example.com/queue-600x800.jpg"
+    assert lines == [
+        '🎮 <a href="https://example.com/campaign-a">Game A</a>',
+        "  • 🎁 Drop A",
+        "  • 🎁 Drop B",
+        '🎮 <a href="https://example.com/campaign-b">Game B</a>',
+        "  • 🎁 Drop C",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_telegram_start_command_resends_status_message():
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+    )
+    service = TelegramService(twitch)
+    service._session = SimpleNamespace(closed=False)
+    service._sync_panel_button = AsyncMock()
+    service.resend_status_message = AsyncMock(return_value=True)
+
+    await service._handle_update(
+        {"message": {"chat": {"id": 42}, "text": "/start"}}
+    )
+
+    service._sync_panel_button.assert_awaited_once()
+    service.resend_status_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
