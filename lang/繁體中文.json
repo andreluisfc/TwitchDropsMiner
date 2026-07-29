@@ -159,7 +159,10 @@
             "telegram_notify_channel_switch": "頻道切換",
             "telegram_notify_status_message": "狀態訊息",
             "telegram_notify_link_updates": "連結更新",
-            "telegram_notify_errors": "錯誤"
+            "telegram_notify_errors": "錯誤",
+            "telegram_resend_status": "重新傳送狀態訊息",
+            "telegram_resend_success": "狀態訊息已重新傳送。",
+            "telegram_resend_failed": "無法重新傳送狀態訊息。"
         },
         "help": {
             "about": "關於 Twitch Drops Miner",

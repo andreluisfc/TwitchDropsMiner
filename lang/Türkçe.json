@@ -159,7 +159,10 @@
             "telegram_notify_channel_switch": "Kanal değişimi",
             "telegram_notify_status_message": "Durum mesajı",
             "telegram_notify_link_updates": "Bağlantı güncellemeleri",
-            "telegram_notify_errors": "Hatalar"
+            "telegram_notify_errors": "Hatalar",
+            "telegram_resend_status": "Durum mesajını yeniden gönder",
+            "telegram_resend_success": "Durum mesajı yeniden gönderildi.",
+            "telegram_resend_failed": "Durum mesajı yeniden gönderilemedi."
         },
         "help": {
             "about": "Twitch Drops Miner Hakkında",

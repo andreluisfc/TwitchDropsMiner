@@ -156,7 +156,10 @@
             "telegram_notify_channel_switch": "频道切换",
             "telegram_notify_status_message": "状态消息",
             "telegram_notify_link_updates": "链接更新",
-            "telegram_notify_errors": "错误"
+            "telegram_notify_errors": "错误",
+            "telegram_resend_status": "重新发送状态消息",
+            "telegram_resend_success": "状态消息已重新发送。",
+            "telegram_resend_failed": "无法重新发送状态消息。"
         },
         "help": {
             "about": "关于 Twitch 掉宝矿工",

@@ -159,7 +159,10 @@
             "telegram_notify_channel_switch": "Schimbare canal",
             "telegram_notify_status_message": "Mesaj de stare",
             "telegram_notify_link_updates": "Actualizări link",
-            "telegram_notify_errors": "Erori"
+            "telegram_notify_errors": "Erori",
+            "telegram_resend_status": "Retrimite mesajul de stare",
+            "telegram_resend_success": "Mesajul de stare a fost retrimis.",
+            "telegram_resend_failed": "Nu s-a putut retrimite mesajul de stare."
         },
         "help": {
             "about": "Despre Twitch Drops Miner",

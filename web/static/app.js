@@ -1529,6 +1529,40 @@ async function verifyProxy() {
     }
 }
 
+async function resendTelegramStatusMessage() {
+    const resultDiv = document.getElementById('telegram-action-result');
+    const button = document.getElementById('telegram-resend-status-btn');
+    const t = state.translations;
+
+    if (!resultDiv || !button) return;
+
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'verify-result loading';
+    resultDiv.textContent = 'Sending...';
+    button.disabled = true;
+
+    try {
+        const response = await fetch('/api/telegram/resend-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (response.ok) {
+            resultDiv.className = 'verify-result success';
+            resultDiv.textContent = t.gui?.settings?.telegram_resend_success || 'Status message resent.';
+        } else {
+            const data = await response.json().catch(() => ({}));
+            resultDiv.className = 'verify-result error';
+            resultDiv.textContent = data.detail || t.gui?.settings?.telegram_resend_failed || 'Could not resend status message.';
+        }
+    } catch (error) {
+        resultDiv.className = 'verify-result error';
+        resultDiv.textContent = `Error: ${error.message}`;
+    } finally {
+        button.disabled = false;
+    }
+}
+
 async function saveSettings() {
     const settings = {
         dark_mode: document.getElementById('dark-mode').checked,
@@ -1732,14 +1766,6 @@ function applyTranslations(t) {
         const telegramNotificationsHeader = document.getElementById('settings-telegram-notifications-header');
         if (telegramNotificationsHeader) telegramNotificationsHeader.textContent = t.gui.settings.telegram_notifications;
 
-        const setInputLabel = (inputId, labelText) => {
-            const label = settingsTab.querySelector(`label:has(#${inputId})`);
-            if (!label) return;
-            const input = label.querySelector('input');
-            label.textContent = labelText + ' ';
-            label.appendChild(input);
-        };
-
         const darkModeLabel = settingsTab.querySelector('label:has(#dark-mode)');
         if (darkModeLabel) {
             const checkbox = darkModeLabel.querySelector('input');
@@ -1777,9 +1803,14 @@ function applyTranslations(t) {
             telegramEnabledLabel.appendChild(checkbox);
             telegramEnabledLabel.appendChild(document.createTextNode(' ' + t.gui.settings.telegram_enabled));
         }
-        setInputLabel('telegram-bot-token', t.gui.settings.telegram_bot_token);
-        setInputLabel('telegram-chat-id', t.gui.settings.telegram_chat_id);
-        setInputLabel('telegram-panel-url', t.gui.settings.telegram_panel_url);
+        const telegramTokenLabel = document.getElementById('telegram-bot-token-label');
+        if (telegramTokenLabel) telegramTokenLabel.textContent = t.gui.settings.telegram_bot_token;
+        const telegramChatIdLabel = document.getElementById('telegram-chat-id-label');
+        if (telegramChatIdLabel) telegramChatIdLabel.textContent = t.gui.settings.telegram_chat_id;
+        const telegramPanelUrlLabel = document.getElementById('telegram-panel-url-label');
+        if (telegramPanelUrlLabel) telegramPanelUrlLabel.textContent = t.gui.settings.telegram_panel_url;
+        const telegramResendBtn = document.getElementById('telegram-resend-status-btn');
+        if (telegramResendBtn) telegramResendBtn.textContent = t.gui.settings.telegram_resend_status;
 
         const benefitsHelp = document.getElementById('settings-benefits-help');
         if (benefitsHelp && t.gui.settings.mining_benefits_help) benefitsHelp.textContent = t.gui.settings.mining_benefits_help;
@@ -2054,6 +2085,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('verify-proxy-btn').addEventListener('click', verifyProxy);
     document.getElementById('reload-btn').addEventListener('click', reloadCampaigns);
+    document.getElementById('telegram-resend-status-btn').addEventListener('click', resendTelegramStatusMessage);
 
     [
         'telegram-enabled',

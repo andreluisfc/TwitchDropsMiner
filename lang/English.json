@@ -132,7 +132,10 @@
             "telegram_notify_channel_switch": "Channel switch",
             "telegram_notify_status_message": "Status message",
             "telegram_notify_link_updates": "Link updates",
-            "telegram_notify_errors": "Errors"
+            "telegram_notify_errors": "Errors",
+            "telegram_resend_status": "Resend status message",
+            "telegram_resend_success": "Status message resent.",
+            "telegram_resend_failed": "Could not resend status message."
         },
         "help": {
             "about": "About Twitch Drops Miner",

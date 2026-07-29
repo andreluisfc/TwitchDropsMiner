@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.config.settings import Settings
 from src.web.app import SettingsUpdate
@@ -76,23 +76,33 @@ class TestSettingsAPI(unittest.IsolatedAsyncioTestCase):
         manager.update_settings({"priority_list_only": True})
         mock_callback.assert_called_once()
 
-    async def test_settings_manager_masks_existing_telegram_token(self):
+    async def test_settings_manager_masks_telegram_token_and_env_config(self):
         mock_broadcaster = AsyncMock()
         mock_settings = SimpleNamespace(
-            telegram_bot_token="123:secret",
+            telegram_bot_token="",
             telegram_enabled=True,
-            telegram_chat_id="42",
-            telegram_panel_url="https://example.com",
+            telegram_chat_id="",
+            telegram_panel_url="",
             telegram_notifications={},
         )
         mock_console = MagicMock()
 
         manager = SettingsManager(mock_broadcaster, mock_settings, mock_console)
 
-        settings = manager.get_settings()
+        with patch.dict(
+            "os.environ",
+            {
+                "TELEGRAM_BOT_TOKEN": "123:secret",
+                "TELEGRAM_CHAT_ID": "42",
+                "TELEGRAM_PANEL_URL": "https://example.com",
+            },
+        ):
+            settings = manager.get_settings()
 
         self.assertTrue(settings["telegram_configured"])
         self.assertEqual(settings["telegram_bot_token"], "********")
+        self.assertEqual(settings["telegram_chat_id"], "42")
+        self.assertEqual(settings["telegram_panel_url"], "https://example.com")
 
 
 if __name__ == "__main__":

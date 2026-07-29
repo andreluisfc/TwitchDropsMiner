@@ -160,7 +160,10 @@
             "telegram_notify_channel_switch": "Zmiana kanału",
             "telegram_notify_status_message": "Wiadomość statusu",
             "telegram_notify_link_updates": "Aktualizacje linku",
-            "telegram_notify_errors": "Błędy"
+            "telegram_notify_errors": "Błędy",
+            "telegram_resend_status": "Wyślij ponownie wiadomość statusu",
+            "telegram_resend_success": "Wiadomość statusu wysłana ponownie.",
+            "telegram_resend_failed": "Nie udało się ponownie wysłać wiadomości statusu."
         },
         "help": {
             "about": "O Twitch Drops Miner",

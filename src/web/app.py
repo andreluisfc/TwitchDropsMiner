@@ -216,6 +216,18 @@ async def update_settings(settings: SettingsUpdate):
     return {"success": True, "settings": gui_manager.settings.get_settings()}
 
 
+@app.post("/api/telegram/resend-status")
+async def resend_telegram_status():
+    """Resend the Telegram status message as a fresh message."""
+    if not twitch_client:
+        raise HTTPException(status_code=503, detail="Twitch client not initialized")
+
+    success = await twitch_client.telegram.resend_status_message()
+    if not success:
+        raise HTTPException(status_code=400, detail="Telegram bot is not enabled or configured")
+    return {"success": True}
+
+
 @app.post("/api/settings/verify-proxy")
 async def verify_proxy(request: ProxyVerifyRequest):
     """Verify proxy connectivity"""

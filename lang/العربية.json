@@ -159,7 +159,10 @@
             "telegram_notify_channel_switch": "تبديل القناة",
             "telegram_notify_status_message": "رسالة الحالة",
             "telegram_notify_link_updates": "تحديثات الرابط",
-            "telegram_notify_errors": "الأخطاء"
+            "telegram_notify_errors": "الأخطاء",
+            "telegram_resend_status": "إعادة إرسال رسالة الحالة",
+            "telegram_resend_success": "تمت إعادة إرسال رسالة الحالة.",
+            "telegram_resend_failed": "تعذرت إعادة إرسال رسالة الحالة."
         },
         "help": {
             "about": "حول Twitch Drops Miner",

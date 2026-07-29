@@ -215,24 +215,30 @@
 
                 <section class="settings-section">
                     <h2 id="settings-telegram-header">Telegram Bot</h2>
-                    <label>
-                        <input type="checkbox" id="telegram-enabled"> Enable Telegram bot
-                    </label>
-                    <label>
-                        Bot Token:
-                        <input type="password" id="telegram-bot-token" autocomplete="off"
-                            placeholder="Leave blank to use TELEGRAM_BOT_TOKEN">
-                    </label>
-                    <label>
-                        Chat ID:
-                        <input type="text" id="telegram-chat-id" placeholder="Leave blank to use TELEGRAM_CHAT_ID">
-                    </label>
-                    <label>
-                        Panel URL:
-                        <input type="url" id="telegram-panel-url" placeholder="https://example.com/tg/gate">
-                    </label>
+                    <div class="telegram-settings">
+                        <label class="setting-toggle">
+                            <input type="checkbox" id="telegram-enabled"> Enable Telegram bot
+                        </label>
+
+                        <div class="settings-field-grid">
+                            <label for="telegram-bot-token" id="telegram-bot-token-label">Bot Token:</label>
+                            <input type="password" id="telegram-bot-token" autocomplete="off"
+                                placeholder="Leave blank to use TELEGRAM_BOT_TOKEN">
+
+                            <label for="telegram-chat-id" id="telegram-chat-id-label">Chat ID:</label>
+                            <input type="text" id="telegram-chat-id" placeholder="Leave blank to use TELEGRAM_CHAT_ID">
+
+                            <label for="telegram-panel-url" id="telegram-panel-url-label">Panel URL:</label>
+                            <input type="url" id="telegram-panel-url" placeholder="https://example.com/tg/gate">
+                        </div>
+
+                        <div class="telegram-actions">
+                            <button id="telegram-resend-status-btn" class="secondary-btn" type="button">Resend status message</button>
+                            <div id="telegram-action-result" class="verify-result" style="display: none;"></div>
+                        </div>
+                    </div>
                     <h3 id="settings-telegram-notifications-header">Notifications</h3>
-                    <div class="benefits-filter filter-checkboxes">
+                    <div class="benefits-filter filter-checkboxes telegram-notifications">
                         <label class="filter-checkbox">
                             <input type="checkbox" id="telegram-notify-drop-claimed" checked />
                             <span>Loot claimed</span>

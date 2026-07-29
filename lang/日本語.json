@@ -159,7 +159,10 @@
             "telegram_notify_channel_switch": "チャンネル切り替え",
             "telegram_notify_status_message": "ステータスメッセージ",
             "telegram_notify_link_updates": "リンク更新",
-            "telegram_notify_errors": "エラー"
+            "telegram_notify_errors": "エラー",
+            "telegram_resend_status": "ステータスメッセージを再送信",
+            "telegram_resend_success": "ステータスメッセージを再送信しました。",
+            "telegram_resend_failed": "ステータスメッセージを再送信できませんでした。"
         },
         "help": {
             "about": "Twitch Drops Minerについて",

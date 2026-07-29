@@ -156,7 +156,10 @@
             "telegram_notify_channel_switch": "Kanalskift",
             "telegram_notify_status_message": "Statusbesked",
             "telegram_notify_link_updates": "Linkopdateringer",
-            "telegram_notify_errors": "Fejl"
+            "telegram_notify_errors": "Fejl",
+            "telegram_resend_status": "Send statusbesked igen",
+            "telegram_resend_success": "Statusbesked sendt igen.",
+            "telegram_resend_failed": "Kunne ikke sende statusbeskeden igen."
         },
         "help": {
             "about": "Om Twitch Drops Miner",

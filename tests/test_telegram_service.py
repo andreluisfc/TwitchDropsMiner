@@ -1,5 +1,7 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.services.telegram_service import TelegramService
 
@@ -99,3 +101,35 @@ def test_telegram_status_image_falls_back_to_queue_art():
     photo_url = TelegramService(twitch)._get_status_photo_url()
 
     assert photo_url == "https://example.com/queue-600x800.jpg"
+
+
+@pytest.mark.asyncio
+async def test_telegram_resend_status_deletes_old_message_and_sends_new_one():
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+    )
+    twitch.watching_channel.get_with_default.return_value = None
+    twitch.gui.get_wanted_game_tree.return_value = []
+    service = TelegramService(twitch)
+    service._session = SimpleNamespace(closed=False)
+    service._state["status_message_id"] = 99
+    service._api = AsyncMock(
+        side_effect=[
+            {"ok": True, "result": True},
+            {"ok": True, "result": {"message_id": 100}},
+        ]
+    )
+
+    assert await service.resend_status_message()
+
+    assert service._state["status_message_id"] == 100
+    service._api.assert_any_call("deleteMessage", chat_id="42", message_id=99)

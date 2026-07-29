@@ -49,11 +49,18 @@ class SettingsManager:
             Dictionary containing all user-configurable settings
         """
         settings = vars(self._settings).copy()
+        env_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        env_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        env_panel_url = os.getenv("TELEGRAM_PANEL_URL") or os.getenv("PUBLIC_PANEL_URL")
         settings["telegram_configured"] = bool(
-            settings.get("telegram_bot_token") or os.getenv("TELEGRAM_BOT_TOKEN")
+            settings.get("telegram_bot_token") or env_token
         )
-        if settings.get("telegram_bot_token"):
+        if settings.get("telegram_bot_token") or env_token:
             settings["telegram_bot_token"] = TELEGRAM_TOKEN_PLACEHOLDER
+        if not settings.get("telegram_chat_id") and env_chat_id:
+            settings["telegram_chat_id"] = env_chat_id
+        if not settings.get("telegram_panel_url") and env_panel_url:
+            settings["telegram_panel_url"] = env_panel_url
         return settings
 
     def get_languages(self) -> dict[str, Any]:

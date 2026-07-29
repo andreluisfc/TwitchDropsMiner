@@ -159,7 +159,10 @@
             "telegram_notify_channel_switch": "Зміна каналу",
             "telegram_notify_status_message": "Повідомлення статусу",
             "telegram_notify_link_updates": "Оновлення посилання",
-            "telegram_notify_errors": "Помилки"
+            "telegram_notify_errors": "Помилки",
+            "telegram_resend_status": "Надіслати статус повторно",
+            "telegram_resend_success": "Повідомлення статусу надіслано повторно.",
+            "telegram_resend_failed": "Не вдалося повторно надіслати повідомлення статусу."
         },
         "help": {
             "about": "Про Twitch Drops Miner",

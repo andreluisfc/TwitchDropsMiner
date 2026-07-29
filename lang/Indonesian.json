@@ -159,7 +159,10 @@
             "telegram_notify_channel_switch": "Pergantian channel",
             "telegram_notify_status_message": "Pesan status",
             "telegram_notify_link_updates": "Pembaruan tautan",
-            "telegram_notify_errors": "Kesalahan"
+            "telegram_notify_errors": "Kesalahan",
+            "telegram_resend_status": "Kirim ulang pesan status",
+            "telegram_resend_success": "Pesan status dikirim ulang.",
+            "telegram_resend_failed": "Tidak dapat mengirim ulang pesan status."
         },
         "help": {
             "about": "Tentang Twitch Drops Miner",

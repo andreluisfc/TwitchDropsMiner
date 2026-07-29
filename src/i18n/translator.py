@@ -201,6 +201,9 @@ class GUISettings(TypedDict):
     telegram_notify_status_message: str
     telegram_notify_link_updates: str
     telegram_notify_errors: str
+    telegram_resend_status: str
+    telegram_resend_success: str
+    telegram_resend_failed: str
 
 
 class GUIHelp(TypedDict):

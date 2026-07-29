@@ -98,6 +98,19 @@ class TelegramService:
     def on_settings_changed(self) -> None:
         self._settings_task = self._create_task(self._apply_settings_change())
 
+    async def resend_status_message(self) -> bool:
+        """Delete the remembered status message and send a fresh one."""
+        if not self.is_enabled or not self._notification_enabled("status_message"):
+            return False
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+
+        if message_id := self._state.get("status_message_id"):
+            await self._api("deleteMessage", chat_id=self._chat_id, message_id=message_id)
+
+        self._save_status_state(None, "text", None)
+        return await self._send_or_edit_status()
+
     async def _apply_settings_change(self) -> None:
         previous_panel_url = self._last_panel_url
         if self.is_enabled:
@@ -146,7 +159,7 @@ class TelegramService:
             await asyncio.sleep(delay)
         await self._send_or_edit_status()
 
-    async def _send_or_edit_status(self) -> None:
+    async def _send_or_edit_status(self) -> bool:
         photo_url = self._get_status_photo_url()
         message = self._format_status_message(queue_limit=5 if photo_url else 8)
         message_id = self._state.get("status_message_id")
@@ -165,7 +178,7 @@ class TelegramService:
             )
             if result:
                 self._save_status_state(message_id, "photo", photo_url)
-                return
+                return True
             await self._api("deleteMessage", chat_id=self._chat_id, message_id=message_id)
         elif message_id is not None:
             method = "editMessageCaption" if message_kind == "photo" else "editMessageText"
@@ -185,7 +198,7 @@ class TelegramService:
             )
             if result:
                 self._save_status_state(message_id, message_kind or "text", None)
-                return
+                return True
 
         if photo_url:
             result = await self._api(
@@ -211,6 +224,8 @@ class TelegramService:
                 message_kind,
                 photo_url if message_kind == "photo" else None,
             )
+            return True
+        return False
 
     def _format_status_message(self, queue_limit: int = 8) -> str:
         watching_channel = self._twitch.watching_channel.get_with_default(None)
