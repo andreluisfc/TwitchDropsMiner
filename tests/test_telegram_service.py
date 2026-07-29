@@ -93,7 +93,7 @@ def test_telegram_status_image_falls_back_to_queue_art():
     )
     twitch.watching_channel.get_with_default.return_value = channel
     twitch.gui.get_wanted_game_tree.return_value = [
-        {"game_name": "Game A", "game_icon": "https://example.com/queue-{width}x{height}.jpg"}
+        {"game_name": "Game A", "game_icon": "https://example.com/queue-120x160.jpg"}
     ]
 
     photo_url = TelegramService(twitch)._get_status_photo_url()

@@ -6,6 +6,7 @@ import asyncio
 import html
 import logging
 import os
+import re
 from collections.abc import Coroutine
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
@@ -27,6 +28,7 @@ logger = logging.getLogger("TwitchDrops")
 TELEGRAM_STATE_PATH = DATA_DIR / "telegram_state.json"
 TELEGRAM_TOKEN_PLACEHOLDER = "********"
 TELEGRAM_PHOTO_CAPTION_LIMIT = 1024
+BOX_ART_SIZE_PATTERN = re.compile(r"-\d+x\d+(?=\.(?:jpg|png|gif)(?:\?|$))", re.I)
 
 
 class TelegramService:
@@ -317,7 +319,8 @@ class TelegramService:
     def _normalize_box_art_url(self, url: str | None) -> str | None:
         if not url:
             return None
-        return url.replace("{width}", "600").replace("{height}", "800")
+        sized_url = url.replace("{width}", "600").replace("{height}", "800")
+        return BOX_ART_SIZE_PATTERN.sub("-600x800", sized_url)
 
     def _progress_bar(self, percent: int) -> str:
         filled = min(10, max(0, round(percent / 10)))
