@@ -190,6 +190,17 @@ class GUISettings(TypedDict):
     actions: str
     connection_quality: str
     minimum_refresh: str
+    telegram: str
+    telegram_enabled: str
+    telegram_bot_token: str
+    telegram_chat_id: str
+    telegram_panel_url: str
+    telegram_notifications: str
+    telegram_notify_drop_claimed: str
+    telegram_notify_channel_switch: str
+    telegram_notify_status_message: str
+    telegram_notify_link_updates: str
+    telegram_notify_errors: str
 
 
 class GUIHelp(TypedDict):

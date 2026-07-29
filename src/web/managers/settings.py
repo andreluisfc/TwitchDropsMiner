@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from src.i18n.translator import _
 from src.models.game import Game
+from src.services.telegram_service import TELEGRAM_TOKEN_PLACEHOLDER
 
 
 logger = logging.getLogger("TwitchDrops")
@@ -47,6 +49,11 @@ class SettingsManager:
             Dictionary containing all user-configurable settings
         """
         settings = vars(self._settings).copy()
+        settings["telegram_configured"] = bool(
+            settings.get("telegram_bot_token") or os.getenv("TELEGRAM_BOT_TOKEN")
+        )
+        if settings.get("telegram_bot_token"):
+            settings["telegram_bot_token"] = TELEGRAM_TOKEN_PLACEHOLDER
         return settings
 
     def get_languages(self) -> dict[str, Any]:
@@ -107,6 +114,35 @@ class SettingsManager:
         should_trigger_update |= self.check_and_update_setting(
             "mining_benefits", settings_data.get("mining_benefits"), True
         )
+        should_trigger_update |= self.check_and_update_setting(
+            "telegram_enabled", settings_data.get("telegram_enabled"), True
+        )
+        if "telegram_bot_token" in settings_data:
+            token_value = str(settings_data["telegram_bot_token"]).strip()
+            if token_value != TELEGRAM_TOKEN_PLACEHOLDER:
+                should_trigger_update |= self.check_and_update_setting(
+                    "telegram_bot_token", token_value, True
+                )
+        if "telegram_chat_id" in settings_data:
+            should_trigger_update |= self.check_and_update_setting(
+                "telegram_chat_id",
+                str(settings_data["telegram_chat_id"]).strip()
+                if settings_data.get("telegram_chat_id")
+                else "",
+                True,
+            )
+        if "telegram_panel_url" in settings_data:
+            should_trigger_update |= self.check_and_update_setting(
+                "telegram_panel_url",
+                str(settings_data["telegram_panel_url"]).strip()
+                if settings_data.get("telegram_panel_url")
+                else "",
+                True,
+            )
+        if "telegram_notifications" in settings_data:
+            should_trigger_update |= self.check_and_update_setting(
+                "telegram_notifications", settings_data.get("telegram_notifications"), True
+            )
 
         self._settings.save()
         asyncio.create_task(self._broadcaster.emit("settings_updated", self.get_settings()))

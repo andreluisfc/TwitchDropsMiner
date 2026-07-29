@@ -121,7 +121,18 @@
             "all_games_selected": "All games are selected or no games available.",
             "actions": "Actions",
             "connection_quality": "Connection Quality:",
-            "minimum_refresh": "Minimum Refresh Interval (minutes):"
+            "minimum_refresh": "Minimum Refresh Interval (minutes):",
+            "telegram": "Telegram Bot",
+            "telegram_enabled": "Enable Telegram bot",
+            "telegram_bot_token": "Bot Token:",
+            "telegram_chat_id": "Chat ID:",
+            "telegram_panel_url": "Panel URL:",
+            "telegram_notifications": "Notifications",
+            "telegram_notify_drop_claimed": "Loot claimed",
+            "telegram_notify_channel_switch": "Channel switch",
+            "telegram_notify_status_message": "Status message",
+            "telegram_notify_link_updates": "Link updates",
+            "telegram_notify_errors": "Errors"
         },
         "help": {
             "about": "About Twitch Drops Miner",

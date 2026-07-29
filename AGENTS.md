@@ -102,6 +102,7 @@ lang/                # Translation JSON files (19 languages)
 - `WatchService`: Drop mining watch payload logic
 - `MaintenanceService`: Periodic maintenance tasks
 - `MessageHandlerService`: Websocket message routing and handling
+- `TelegramService`: Telegram notifications, panel menu button sync, and live status message updates
 
 
 **src/models/channel.py** - Channel and Stream:
@@ -151,6 +152,7 @@ lang/                # Translation JSON files (19 languages)
 - Connection quality multiplier
 - Language selection
 - Proxy support (including verification)
+- Telegram bot configuration with environment variable fallback for token/chat ID/panel URL
 - Logging and dump flags from command-line arguments
 - Persistence to JSON file (`settings.json`) in DATA_DIR
 - Inventory filters (Status, Benefit Type, Game Search)

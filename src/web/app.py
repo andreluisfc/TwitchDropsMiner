@@ -78,6 +78,11 @@ class SettingsUpdate(BaseModel):
     inventory_filters: dict | None = None
     inventory_list_view: bool | None = None
     mining_benefits: dict[str, bool] | None = None
+    telegram_enabled: bool | None = None
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+    telegram_panel_url: str | None = None
+    telegram_notifications: dict[str, bool] | None = None
 
 
 class ProxyVerifyRequest(BaseModel):

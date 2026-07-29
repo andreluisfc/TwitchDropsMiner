@@ -148,7 +148,18 @@
             "minimum_refresh": "Minimální interval obnovení (minuty):",
             "reload_campaigns": "Znovu načíst kampaně",
             "mining_benefits": "Výhody Těžby",
-            "mining_benefits_help": "Vyberte typy dropů, které chcete těžit."
+            "mining_benefits_help": "Vyberte typy dropů, které chcete těžit.",
+            "telegram": "Telegram bot",
+            "telegram_enabled": "Povolit Telegram bot",
+            "telegram_bot_token": "Token bota:",
+            "telegram_chat_id": "ID chatu:",
+            "telegram_panel_url": "URL panelu:",
+            "telegram_notifications": "Oznámení",
+            "telegram_notify_drop_claimed": "Loot vyzvednut",
+            "telegram_notify_channel_switch": "Přepnutí kanálu",
+            "telegram_notify_status_message": "Stavová zpráva",
+            "telegram_notify_link_updates": "Aktualizace odkazu",
+            "telegram_notify_errors": "Chyby"
         },
         "help": {
             "about": "O Twitch Drops Miner",

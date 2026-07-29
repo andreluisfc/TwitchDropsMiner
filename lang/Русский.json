@@ -149,7 +149,18 @@
             "minimum_refresh": "Минимальный интервал обновления (минуты):",
             "reload_campaigns": "Перезагрузить кампании",
             "mining_benefits": "Преимущества майнинга",
-            "mining_benefits_help": "Выберите типы drops, которые вы хотите майнить."
+            "mining_benefits_help": "Выберите типы drops, которые вы хотите майнить.",
+            "telegram": "Бот Telegram",
+            "telegram_enabled": "Включить бота Telegram",
+            "telegram_bot_token": "Токен бота:",
+            "telegram_chat_id": "ID чата:",
+            "telegram_panel_url": "URL панели:",
+            "telegram_notifications": "Уведомления",
+            "telegram_notify_drop_claimed": "Лут получен",
+            "telegram_notify_channel_switch": "Смена канала",
+            "telegram_notify_status_message": "Сообщение статуса",
+            "telegram_notify_link_updates": "Обновления ссылки",
+            "telegram_notify_errors": "Ошибки"
         },
         "help": {
             "about": "О Twitch Drops Miner",

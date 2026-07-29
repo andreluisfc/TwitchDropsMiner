@@ -148,7 +148,18 @@
             "minimum_refresh": "Interval Refresh Minimum (menit):",
             "reload_campaigns": "Muat Ulang Kampanye",
             "mining_benefits": "Manfaat Penambangan",
-            "mining_benefits_help": "Pilih jenis drops yang ingin Anda tambang."
+            "mining_benefits_help": "Pilih jenis drops yang ingin Anda tambang.",
+            "telegram": "Bot Telegram",
+            "telegram_enabled": "Aktifkan bot Telegram",
+            "telegram_bot_token": "Token bot:",
+            "telegram_chat_id": "ID chat:",
+            "telegram_panel_url": "URL panel:",
+            "telegram_notifications": "Notifikasi",
+            "telegram_notify_drop_claimed": "Loot diklaim",
+            "telegram_notify_channel_switch": "Pergantian channel",
+            "telegram_notify_status_message": "Pesan status",
+            "telegram_notify_link_updates": "Pembaruan tautan",
+            "telegram_notify_errors": "Kesalahan"
         },
         "help": {
             "about": "Tentang Twitch Drops Miner",

@@ -148,7 +148,18 @@
             "minimum_refresh": "最小更新間隔（分）：",
             "reload_campaigns": "キャンペーンを再読み込み",
             "mining_benefits": "マイニング特典",
-            "mining_benefits_help": "マイニングしたいドロップの種類を選択してください。"
+            "mining_benefits_help": "マイニングしたいドロップの種類を選択してください。",
+            "telegram": "Telegramボット",
+            "telegram_enabled": "Telegramボットを有効化",
+            "telegram_bot_token": "ボットトークン:",
+            "telegram_chat_id": "チャットID:",
+            "telegram_panel_url": "パネルURL:",
+            "telegram_notifications": "通知",
+            "telegram_notify_drop_claimed": "ルート受け取り済み",
+            "telegram_notify_channel_switch": "チャンネル切り替え",
+            "telegram_notify_status_message": "ステータスメッセージ",
+            "telegram_notify_link_updates": "リンク更新",
+            "telegram_notify_errors": "エラー"
         },
         "help": {
             "about": "Twitch Drops Minerについて",

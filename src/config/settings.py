@@ -22,6 +22,14 @@ class InventoryFilters(TypedDict):
     show_upcoming: bool
 
 
+class TelegramNotifications(TypedDict):
+    drop_claimed: bool
+    channel_switch: bool
+    status_message: bool
+    link_updates: bool
+    errors: bool
+
+
 default_settings = {
     "connection_quality": 1,
     "dark_mode": False,
@@ -49,6 +57,17 @@ default_settings = {
         "UNKNOWN": True,
     },
     "proxy": "",
+    "telegram_enabled": False,
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+    "telegram_panel_url": "",
+    "telegram_notifications": {
+        "drop_claimed": True,
+        "channel_switch": True,
+        "status_message": True,
+        "link_updates": True,
+        "errors": True,
+    },
 }
 
 
@@ -64,6 +83,11 @@ class Settings:
     minimum_refresh_interval_minutes: int
     mining_benefits: dict[str, bool]
     proxy: str
+    telegram_enabled: bool
+    telegram_bot_token: str
+    telegram_chat_id: str
+    telegram_panel_url: str
+    telegram_notifications: TelegramNotifications
 
     def __init__(self):
         self.load()

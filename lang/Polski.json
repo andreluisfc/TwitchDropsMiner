@@ -149,7 +149,18 @@
             "minimum_refresh": "Minimalny interwał odświeżania (minuty):",
             "reload_campaigns": "Przeładuj kampanie",
             "mining_benefits": "Korzyści z Minowania",
-            "mining_benefits_help": "Wybierz rodzaje dropów, które chcesz zdobywać."
+            "mining_benefits_help": "Wybierz rodzaje dropów, które chcesz zdobywać.",
+            "telegram": "Bot Telegram",
+            "telegram_enabled": "Włącz bota Telegram",
+            "telegram_bot_token": "Token bota:",
+            "telegram_chat_id": "ID czatu:",
+            "telegram_panel_url": "URL panelu:",
+            "telegram_notifications": "Powiadomienia",
+            "telegram_notify_drop_claimed": "Odebrany loot",
+            "telegram_notify_channel_switch": "Zmiana kanału",
+            "telegram_notify_status_message": "Wiadomość statusu",
+            "telegram_notify_link_updates": "Aktualizacje linku",
+            "telegram_notify_errors": "Błędy"
         },
         "help": {
             "about": "O Twitch Drops Miner",

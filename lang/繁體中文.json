@@ -148,7 +148,18 @@
             "minimum_refresh": "最小重新整理間隔（分鐘）：",
             "reload_campaigns": "重新載入活動",
             "mining_benefits": "挖掘獎勵",
-            "mining_benefits_help": "選擇您想要獲取的掉落類型。"
+            "mining_benefits_help": "選擇您想要獲取的掉落類型。",
+            "telegram": "Telegram 機器人",
+            "telegram_enabled": "啟用 Telegram 機器人",
+            "telegram_bot_token": "機器人權杖:",
+            "telegram_chat_id": "聊天 ID:",
+            "telegram_panel_url": "面板 URL:",
+            "telegram_notifications": "通知",
+            "telegram_notify_drop_claimed": "戰利品已領取",
+            "telegram_notify_channel_switch": "頻道切換",
+            "telegram_notify_status_message": "狀態訊息",
+            "telegram_notify_link_updates": "連結更新",
+            "telegram_notify_errors": "錯誤"
         },
         "help": {
             "about": "關於 Twitch Drops Miner",

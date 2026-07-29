@@ -145,7 +145,18 @@
             "minimum_refresh": "最小刷新间隔（分钟）：",
             "reload_campaigns": "重新加载活动",
             "mining_benefits": "挖掘奖励",
-            "mining_benefits_help": "选择您想要获取的掉落类型。"
+            "mining_benefits_help": "选择您想要获取的掉落类型。",
+            "telegram": "Telegram 机器人",
+            "telegram_enabled": "启用 Telegram 机器人",
+            "telegram_bot_token": "机器人令牌:",
+            "telegram_chat_id": "聊天 ID:",
+            "telegram_panel_url": "面板 URL:",
+            "telegram_notifications": "通知",
+            "telegram_notify_drop_claimed": "战利品已领取",
+            "telegram_notify_channel_switch": "频道切换",
+            "telegram_notify_status_message": "状态消息",
+            "telegram_notify_link_updates": "链接更新",
+            "telegram_notify_errors": "错误"
         },
         "help": {
             "about": "关于 Twitch 掉宝矿工",
