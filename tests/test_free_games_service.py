@@ -71,7 +71,7 @@ def test_free_games_status_exposes_module_metadata_and_account_lookup():
     assert "run_account" in status["module"]["actions"]
     assert status["vnc"] == {
         "enabled": True,
-        "url": "http://localhost:6080",
+        "url": None,
         "bind": "127.0.0.1:6080",
         "active": False,
     }
@@ -111,6 +111,55 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
     assert env["VNC_PASSWORD"] == "vnc-secret"
     assert "/opt/tdm/data/free-games/accounts/main:/fgc/data" in command
     assert "127.0.0.1:6080:6080" in command
+
+
+def test_free_games_docker_command_can_join_hub_network(monkeypatch):
+    monkeypatch.setenv("HOST_DATA_DIR", "/opt/tdm/data")
+    monkeypatch.setenv("HUB_DOCKER_NETWORK", "tdm-hub")
+    settings = SimpleNamespace(
+        free_games_enabled=True,
+        free_games_runner="docker",
+        free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+        free_games_schedule_hours=24,
+        free_games_accounts=[],
+    )
+    service = FreeGamesService(make_twitch(settings))
+
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        command = service._docker_command({"id": "main"}, Path(temp_dir))
+
+    assert "--network" in command
+    assert "tdm-hub" in command
+    assert "127.0.0.1:6080:6080" not in command
+
+
+def test_free_games_vnc_target_uses_active_account_and_hub_network(monkeypatch):
+    monkeypatch.setenv("HUB_DOCKER_NETWORK", "tdm-hub")
+    settings = SimpleNamespace(
+        free_games_enabled=True,
+        free_games_runner="docker",
+        free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+        free_games_schedule_hours=24,
+        free_games_accounts=[{"id": "main"}],
+    )
+    service = FreeGamesService(make_twitch(settings))
+    service._state["running"] = True
+    service._state["active_account_id"] = "main"
+
+    assert service.get_status()["vnc"] == {
+        "enabled": True,
+        "url": "/api/free-games/vnc/",
+        "bind": "tdm-hub",
+        "active": True,
+    }
+    assert (
+        service.get_vnc_target_url("vnc.html", "autoconnect=1")
+        == "http://fgc-epic-main:6080/vnc.html?autoconnect=1"
+    )
+    assert (
+        service.get_vnc_target_url("websockify", "token=abc", websocket=True)
+        == "ws://fgc-epic-main:6080/websockify?token=abc"
+    )
 
 
 def test_free_games_run_now_requires_enabled_account(monkeypatch):

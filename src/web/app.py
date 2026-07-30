@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import aiohttp
 import socketio
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -21,6 +22,17 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("TwitchDrops")
+HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "host",
+}
 
 # Create FastAPI app
 app = FastAPI(title="Twitch Drops Miner Web", version="1.0.0")
@@ -272,6 +284,132 @@ async def update_free_games_runner():
             status_code=409, detail="Free games module is already running or updating"
         )
     return {"success": True}
+
+
+@app.api_route(
+    "/api/free-games/vnc/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+)
+async def proxy_free_games_vnc(path: str, request: Request):
+    """Proxy the active Epic claimer noVNC UI through the hub panel."""
+    if not twitch_client:
+        raise HTTPException(status_code=503, detail="Twitch client not initialized")
+    target = twitch_client.free_games.get_vnc_target_url(path, request.url.query)
+    if not target:
+        raise HTTPException(status_code=404, detail="Epic browser is not active")
+
+    headers = _proxy_request_headers(request.headers)
+    body = await request.body()
+    async with (
+        aiohttp.ClientSession() as session,
+        session.request(
+            request.method,
+            target,
+            headers=headers,
+            data=body if body else None,
+            allow_redirects=False,
+        ) as upstream,
+    ):
+        content = await upstream.read()
+        response_headers = _proxy_response_headers(upstream.headers)
+        if location := response_headers.get("location"):
+            response_headers["location"] = _rewrite_vnc_location(location)
+        return Response(
+            content=content,
+            status_code=upstream.status,
+            headers=response_headers,
+            media_type=upstream.content_type,
+        )
+
+
+@app.websocket("/api/free-games/vnc/{path:path}")
+async def proxy_free_games_vnc_websocket(websocket: WebSocket, path: str):
+    """Proxy the active Epic claimer noVNC websocket."""
+    if not twitch_client:
+        await websocket.close(code=1011)
+        return
+    target = twitch_client.free_games.get_vnc_target_url(
+        path,
+        websocket.url.query,
+        websocket=True,
+    )
+    if not target:
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.ws_connect(target) as upstream:
+                await _relay_websocket(websocket, upstream)
+        except Exception:
+            logger.warning("Epic noVNC websocket proxy failed", exc_info=True)
+            await websocket.close(code=1011)
+
+
+def _proxy_request_headers(headers: Any) -> dict[str, str]:
+    return {
+        key: value
+        for key, value in headers.items()
+        if key.lower() not in HOP_BY_HOP_HEADERS
+    }
+
+
+def _proxy_response_headers(headers: Any) -> dict[str, str]:
+    return {
+        key: value
+        for key, value in headers.items()
+        if key.lower() not in HOP_BY_HOP_HEADERS | {"content-length", "content-encoding"}
+    }
+
+
+def _rewrite_vnc_location(location: str) -> str:
+    if location.startswith("/"):
+        return f"/api/free-games/vnc{location}"
+    return location
+
+
+async def _relay_websocket(websocket: WebSocket, upstream: aiohttp.ClientWebSocketResponse) -> None:
+    client_to_upstream = asyncio.create_task(_relay_client_to_upstream(websocket, upstream))
+    upstream_to_client = asyncio.create_task(_relay_upstream_to_client(websocket, upstream))
+    done, pending = await asyncio.wait(
+        {client_to_upstream, upstream_to_client},
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    for task in pending:
+        task.cancel()
+    for task in done:
+        task.result()
+
+
+async def _relay_client_to_upstream(
+    websocket: WebSocket, upstream: aiohttp.ClientWebSocketResponse
+) -> None:
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                await upstream.close()
+                return
+            if "bytes" in message and message["bytes"] is not None:
+                await upstream.send_bytes(message["bytes"])
+            elif "text" in message and message["text"] is not None:
+                await upstream.send_str(message["text"])
+    except WebSocketDisconnect:
+        await upstream.close()
+
+
+async def _relay_upstream_to_client(
+    websocket: WebSocket, upstream: aiohttp.ClientWebSocketResponse
+) -> None:
+    async for message in upstream:
+        if message.type == aiohttp.WSMsgType.TEXT:
+            await websocket.send_text(message.data)
+        elif message.type == aiohttp.WSMsgType.BINARY:
+            await websocket.send_bytes(message.data)
+        elif message.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED):
+            await websocket.close()
+            return
 
 
 @app.post("/api/settings/verify-proxy")

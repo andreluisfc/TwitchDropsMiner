@@ -31,6 +31,7 @@ FREE_GAMES_STATE_PATH = DATA_DIR / "free_games_state.json"
 FREE_GAMES_DATA_DIR = DATA_DIR / "free-games"
 SECRET_PLACEHOLDER = "********"
 DEFAULT_FREE_GAMES_IMAGE = "ghcr.io/vogler/free-games-claimer:latest"
+FREE_GAMES_VNC_PROXY_PATH = "/api/free-games/vnc/"
 
 
 class FreeGamesService:
@@ -100,12 +101,7 @@ class FreeGamesService:
             "last_update_success": self._state.get("last_update_success"),
             "last_error": self._state.get("last_error"),
             "next_run_at": self._next_run_at(),
-            "vnc": {
-                "enabled": self._runner == "docker",
-                "url": "http://localhost:6080",
-                "bind": "127.0.0.1:6080",
-                "active": bool(self._state.get("running")),
-            },
+            "vnc": self._vnc_status(),
             "accounts": [self._account_status(account) for account in self._accounts],
         }
 
@@ -290,7 +286,7 @@ class FreeGamesService:
     def _docker_command(self, account: dict[str, Any], account_dir: Path) -> list[str]:
         account_id = str(account["id"])
         host_account_dir = self._host_account_dir(account_id, account_dir)
-        container_name = f"fgc-epic-{self._safe_id(account_id)}"
+        container_name = self._docker_container_name(account_id)
         command = [
             "docker",
             "run",
@@ -305,9 +301,11 @@ class FreeGamesService:
             "SCREENSHOTS_DIR=/fgc/data/screenshots",
             "-e",
             "SHOW=1",
-            "-p",
-            "127.0.0.1:6080:6080",
         ]
+        if self._docker_network:
+            command.extend(["--network", self._docker_network])
+        else:
+            command.extend(["-p", "127.0.0.1:6080:6080"])
         env = self._account_env(account, account_dir)
         for key in ("EG_EMAIL", "EG_PASSWORD", "EG_OTPKEY", "EG_PARENTALPIN", "VNC_PASSWORD"):
             if env.get(key):
@@ -455,6 +453,36 @@ class FreeGamesService:
                 [host_data_dir.rstrip("/"), "free-games", "accounts", self._safe_id(account_id)]
             )
         return str(account_dir)
+
+    @property
+    def _docker_network(self) -> str:
+        return str(os.getenv("HUB_DOCKER_NETWORK") or "").strip()
+
+    def _docker_container_name(self, account_id: str) -> str:
+        return f"fgc-epic-{self._safe_id(account_id)}"
+
+    def _vnc_status(self) -> dict[str, Any]:
+        active = bool(self._state.get("running") and self._state.get("active_account_id"))
+        status = {
+            "enabled": self._runner == "docker",
+            "url": FREE_GAMES_VNC_PROXY_PATH if active else None,
+            "bind": self._docker_network or "127.0.0.1:6080",
+            "active": active,
+        }
+        return status
+
+    def get_vnc_target_url(self, path: str = "", query: str = "", *, websocket: bool = False) -> str | None:
+        if self._runner != "docker" or not self._state.get("running"):
+            return None
+        account_id = str(self._state.get("active_account_id") or "")
+        if not account_id:
+            return None
+        scheme = "ws" if websocket else "http"
+        base = f"{scheme}://{self._docker_container_name(account_id)}:6080"
+        target = f"{base}/{path.lstrip('/')}"
+        if query:
+            target = f"{target}?{query}"
+        return target
 
     def _safe_id(self, value: str) -> str:
         return re.sub(r"[^a-zA-Z0-9_.-]+", "-", value).strip("-") or "account"
