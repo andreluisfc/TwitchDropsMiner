@@ -2409,7 +2409,7 @@ const HUB_MODULE_ACTION_LABELS = {
     update: 'Update',
 };
 
-const HUB_MODULE_ACTIONS_REQUIRING_PARAMS = new Set(['run_account']);
+const HUB_MODULE_ACTIONS_REQUIRING_PARAMS = new Set(['run_account', 'clear_attention']);
 
 function formatHubModuleActionLabel(action) {
     return HUB_MODULE_ACTION_LABELS[action] || String(action).replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
@@ -2608,6 +2608,10 @@ function updateFreeGamesStatus(status) {
             }
             if (account.attention?.required && account.attention.message) {
                 el.appendChild(makeElement('div', { class: 'error-text' }, account.attention.message));
+                el.appendChild(makeElement('button', { type: 'button', class: 'small-btn' }, 'Clear attention', button => {
+                    button.disabled = busy || account.enabled === false;
+                    button.addEventListener('click', () => clearFreeGamesAttention(account.id));
+                }));
             } else if (account.last_error) {
                 el.appendChild(makeElement('div', { class: 'error-text' }, account.last_error));
             }
@@ -2664,6 +2668,37 @@ async function loadFreeGamesLog(kind, accountId = null) {
                 makeElement('pre', { class: 'free-games-log-output' }, data.content || '')
             );
         }
+    } catch (error) {
+        if (resultDiv) {
+            resultDiv.className = 'verify-result error';
+            resultDiv.textContent = error.message;
+        }
+    }
+}
+
+async function clearFreeGamesAttention(accountId) {
+    const resultDiv = document.getElementById('free-games-action-result');
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'verify-result loading';
+        resultDiv.textContent = 'Clearing Epic attention...';
+    }
+    try {
+        const response = await fetch('/api/hub/modules/free-games-epic/actions/clear_attention', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ params: { account_id: accountId } })
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'Could not clear Epic attention');
+        }
+        if (resultDiv) {
+            resultDiv.className = 'verify-result success';
+            resultDiv.textContent = 'Epic attention cleared.';
+        }
+        fetchFreeGamesStatus();
+        fetchHubModules();
     } catch (error) {
         if (resultDiv) {
             resultDiv.className = 'verify-result error';

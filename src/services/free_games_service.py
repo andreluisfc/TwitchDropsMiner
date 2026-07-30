@@ -103,7 +103,7 @@ class FreeGamesService:
                 "name": "Epic Freebies",
                 "upstream": "https://github.com/vogler/free-games-claimer",
                 "update_strategy": self._runner,
-                "actions": ["run", "run_account", "stop", "update"],
+                "actions": ["run", "run_account", "clear_attention", "stop", "update"],
             },
             "source": self._source_info(),
             "attention": self._attention_info(),
@@ -149,6 +149,18 @@ class FreeGamesService:
             return False
         self._update_task = self._create_task(self._update_runner())
         return self._update_task is not None
+
+    def clear_attention(self, account_id: str) -> bool:
+        if not self.account_exists(account_id):
+            return False
+        account_state = self._state.setdefault("accounts", {}).setdefault(account_id, {})
+        account_state["attention_cleared_at"] = datetime.now().astimezone().isoformat()
+        account_state["last_error"] = None
+        if self._state.get("active_account_id") in {None, "", account_id}:
+            self._state["last_error"] = None
+        self._save_state()
+        self._twitch.telegram.queue_status_update()
+        return True
 
     def get_log(
         self,
@@ -519,6 +531,7 @@ class FreeGamesService:
             "last_run_finished_at": account_state.get("last_run_finished_at"),
             "last_run_success": account_state.get("last_run_success"),
             "last_error": account_state.get("last_error"),
+            "attention_cleared_at": account_state.get("attention_cleared_at"),
             "attention": attention,
             "logs": {
                 "last_run": self._log_info(self._account_run_log_path(account_id)),
@@ -618,7 +631,10 @@ class FreeGamesService:
             return info
         account_id = log_path.parent.name
         text = log_path.read_text(encoding="utf8", errors="replace")
+        account_id = self._account_id_for_data_dir_name(account_id)
         attention = self._classify_attention(text, account_id)
+        if attention and self._attention_was_cleared(account_id, log_path):
+            return info
         return attention or info
 
     def _account_attention_info(self, account_id: str) -> dict[str, Any]:
@@ -626,7 +642,10 @@ class FreeGamesService:
         if log_path is None:
             return self._empty_attention_info(account_id)
         text = log_path.read_text(encoding="utf8", errors="replace")
-        return self._classify_attention(text, account_id) or self._empty_attention_info(account_id)
+        attention = self._classify_attention(text, account_id)
+        if attention and self._attention_was_cleared(account_id, log_path):
+            return self._empty_attention_info(account_id)
+        return attention or self._empty_attention_info(account_id)
 
     def _empty_attention_info(self, account_id: str | None = None) -> dict[str, Any]:
         return {
@@ -677,6 +696,25 @@ class FreeGamesService:
     def _account_run_log_path(self, account_id: str) -> Path | None:
         log_path = self._account_data_dir(account_id) / "last-run.log"
         return log_path if log_path.is_file() else None
+
+    def _account_id_for_data_dir_name(self, data_dir_name: str) -> str:
+        for account in self._accounts:
+            account_id = str(account["id"])
+            if self._safe_id(account_id) == data_dir_name:
+                return account_id
+        return data_dir_name
+
+    def _attention_was_cleared(self, account_id: str, log_path: Path) -> bool:
+        account_state = self._state.get("accounts", {}).get(account_id, {})
+        cleared_at = account_state.get("attention_cleared_at") if isinstance(account_state, dict) else None
+        if not cleared_at:
+            return False
+        try:
+            cleared = datetime.fromisoformat(str(cleared_at))
+        except ValueError:
+            return False
+        log_updated = datetime.fromtimestamp(log_path.stat().st_mtime).astimezone()
+        return cleared >= log_updated
 
     def _logs_info(self) -> dict[str, Any]:
         return {

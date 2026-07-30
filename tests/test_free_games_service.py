@@ -337,6 +337,62 @@ def test_free_games_status_marks_automation_paused_when_all_accounts_need_attent
     assert not due
 
 
+def test_free_games_clear_attention_resumes_scheduling_without_deleting_log(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        account_dir = data_dir / "accounts" / "main-example.com"
+        account_dir.mkdir(parents=True)
+        log_path = account_dir / "last-run.log"
+        log_path.write_text("Got a captcha during login!", encoding="utf8")
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main@example.com"}],
+                )
+            )
+        )
+        service._started_at = service._started_at - timedelta(minutes=11)
+
+        assert service.get_status()["attention"]["account_id"] == "main@example.com"
+        assert service.get_status()["automation"]["paused"] is True
+        assert service.clear_attention("main@example.com")
+        status = service.get_status()
+        due = service._due_for_scheduled_run()
+        log_exists = log_path.exists()
+
+    assert log_exists
+    assert status["attention"]["required"] is False
+    assert status["accounts"][0]["attention"]["required"] is False
+    assert status["accounts"][0]["attention_cleared_at"]
+    assert status["automation"] == {
+        "scheduled_accounts": 1,
+        "paused": False,
+        "pause_reason": None,
+    }
+    assert due
+
+
+def test_free_games_clear_attention_rejects_unknown_account():
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[{"id": "main"}],
+            )
+        )
+    )
+
+    assert not service.clear_attention("missing")
+
+
 def test_free_games_state_loader_preserves_dynamic_account_ids(monkeypatch):
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
         state_path = Path(temp_dir) / "free_games_state.json"

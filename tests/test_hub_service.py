@@ -25,7 +25,7 @@ def test_hub_service_returns_twitch_and_epic_modules():
                     "name": "Epic Freebies",
                     "upstream": "https://github.com/vogler/free-games-claimer",
                     "update_strategy": "docker",
-                    "actions": ["run", "run_account", "update"],
+                    "actions": ["run", "run_account", "clear_attention", "update"],
                 },
                 "enabled": True,
                 "running": False,
@@ -171,6 +171,7 @@ def test_hub_service_runs_epic_actions():
         account_exists=MagicMock(return_value=True),
         has_enabled_accounts=MagicMock(return_value=True),
         run_now=MagicMock(return_value=True),
+        clear_attention=MagicMock(return_value=True),
     )
     twitch = SimpleNamespace(free_games=free_games)
     hub = HubService(twitch)
@@ -185,6 +186,11 @@ def test_hub_service_runs_epic_actions():
         "module_id": "free-games-epic",
         "action": "run_account",
     }
+    assert hub.run_action("free-games-epic", "clear_attention", {"account_id": "main"}) == {
+        "success": True,
+        "module_id": "free-games-epic",
+        "action": "clear_attention",
+    }
     free_games.get_status.return_value = {"enabled": True, "running": True}
     assert hub.run_action("free-games-epic", "stop") == {
         "success": True,
@@ -193,6 +199,7 @@ def test_hub_service_runs_epic_actions():
     }
     free_games.update_runner.assert_called_once_with()
     free_games.run_now.assert_called_once_with("main")
+    free_games.clear_attention.assert_called_once_with("main")
     free_games.stop_run.assert_called_once_with()
 
 
@@ -254,6 +261,7 @@ def test_hub_service_rejects_invalid_action_requests():
         account_exists=MagicMock(return_value=False),
         has_enabled_accounts=MagicMock(return_value=False),
         run_now=MagicMock(return_value=False),
+        clear_attention=MagicMock(return_value=False),
     )
     hub = HubService(SimpleNamespace(free_games=free_games))
 
@@ -264,6 +272,16 @@ def test_hub_service_rejects_invalid_action_requests():
         "detail": "account_id is required",
     }
     assert hub.run_action("free-games-epic", "run_account", {"account_id": "missing"}) == {
+        "success": False,
+        "status_code": 404,
+        "detail": "Epic account not found",
+    }
+    assert hub.run_action("free-games-epic", "clear_attention") == {
+        "success": False,
+        "status_code": 400,
+        "detail": "account_id is required",
+    }
+    assert hub.run_action("free-games-epic", "clear_attention", {"account_id": "missing"}) == {
         "success": False,
         "status_code": 404,
         "detail": "Epic account not found",

@@ -34,6 +34,7 @@ CALLBACK_FREE_GAMES_UPDATE = "free_games:update"
 CALLBACK_HUB_UPDATE_ALL = "hub:update_all"
 CALLBACK_STATUS_REFRESH = "status:refresh"
 CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX = "fg:r:"
+CALLBACK_FREE_GAMES_CLEAR_ATTENTION_PREFIX = "fg:c:"
 TELEGRAM_STATE_DEFAULTS: dict[str, Any] = {
     "status_message_id": None,
     "status_message_kind": None,
@@ -219,6 +220,7 @@ class TelegramService:
                             [{"text": "⏹ Stop Epic", "callback_data": CALLBACK_FREE_GAMES_STOP}]
                         )
                     account_buttons = []
+                    attention_buttons = []
                     for index, account in enumerate((status.get("accounts") or [])[:4]):
                         if account.get("enabled") is False:
                             continue
@@ -229,8 +231,18 @@ class TelegramService:
                                 "callback_data": f"{CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX}{index}",
                             }
                         )
+                        attention = account.get("attention") or {}
+                        if attention.get("required"):
+                            attention_buttons.append(
+                                {
+                                    "text": f"✅ Clear {name[:20]}",
+                                    "callback_data": f"{CALLBACK_FREE_GAMES_CLEAR_ATTENTION_PREFIX}{index}",
+                                }
+                            )
                     for index in range(0, len(account_buttons), 2):
                         keyboard.append(account_buttons[index : index + 2])
+                    for index in range(0, len(attention_buttons), 2):
+                        keyboard.append(attention_buttons[index : index + 2])
         keyboard.append([{"text": "♻️ Refresh", "callback_data": CALLBACK_STATUS_REFRESH}])
         return {
             "inline_keyboard": keyboard
@@ -540,6 +552,9 @@ class TelegramService:
         if data.startswith(CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX):
             await self._handle_free_games_account_callback(callback_id, data, free_games)
             return
+        if data.startswith(CALLBACK_FREE_GAMES_CLEAR_ATTENTION_PREFIX):
+            await self._handle_free_games_clear_attention_callback(callback_id, data, free_games)
+            return
 
         if data == CALLBACK_FREE_GAMES_RUN:
             status = free_games.get_status()
@@ -608,6 +623,29 @@ class TelegramService:
             self.queue_status_update(immediate=True)
         else:
             await self._answer_callback(callback_id, "Epic run could not be started.")
+
+    async def _handle_free_games_clear_attention_callback(
+        self, callback_id: str, data: str, free_games: Any
+    ) -> None:
+        try:
+            account_index = int(data.removeprefix(CALLBACK_FREE_GAMES_CLEAR_ATTENTION_PREFIX))
+        except ValueError:
+            await self._answer_callback(callback_id, "Epic account was not found.")
+            return
+
+        status = free_games.get_status()
+        accounts = status.get("accounts") or []
+        if account_index < 0 or account_index >= len(accounts):
+            await self._answer_callback(callback_id, "Epic account was not found.")
+            return
+
+        account = accounts[account_index]
+        account_id = str(account.get("id") or "")
+        if account_id and free_games.clear_attention(account_id):
+            await self._answer_callback(callback_id, f"Epic attention cleared for {account.get('name')}.")
+            self.queue_status_update(immediate=True)
+        else:
+            await self._answer_callback(callback_id, "Epic attention could not be cleared.")
 
     async def _answer_callback(self, callback_id: str, text: str) -> None:
         if not callback_id:

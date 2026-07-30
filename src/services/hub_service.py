@@ -115,6 +115,32 @@ class HubService:
                 }
             return {"success": True, "module_id": "free-games-epic", "action": action}
 
+        if action == "clear_attention":
+            account_id = str(params.get("account_id") or "").strip()
+            if not account_id:
+                return {
+                    "success": False,
+                    "status_code": 400,
+                    "detail": "account_id is required",
+                }
+            if not free_games.account_exists(account_id):
+                return {
+                    "success": False,
+                    "status_code": 404,
+                    "detail": "Epic account not found",
+                }
+            if not free_games.clear_attention(account_id):
+                return {
+                    "success": False,
+                    "status_code": 409,
+                    "detail": "Epic attention could not be cleared",
+                }
+            return {
+                "success": True,
+                "module_id": "free-games-epic",
+                "action": action,
+            }
+
         if action not in {"run", "run_account"}:
             return {
                 "success": False,
