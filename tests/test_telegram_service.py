@@ -279,3 +279,173 @@ async def test_telegram_resend_status_deletes_old_message_and_sends_new_one():
 
     assert service._state["status_message_id"] == 100
     service._api.assert_any_call("deleteMessage", chat_id="42", message_id=99)
+    service._api.assert_any_call(
+        "sendMessage",
+        chat_id="42",
+        text=service._format_status_message(),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=service._status_reply_markup(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_telegram_callback_runs_epic_module():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(return_value={"enabled": True, "running": False}),
+        run_now=MagicMock(return_value=True),
+        update_runner=MagicMock(),
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        free_games=free_games,
+    )
+    service = TelegramService(twitch)
+    service._session = SimpleNamespace(closed=False)
+    service._api = AsyncMock()
+    service.queue_status_update = MagicMock()
+
+    await service._handle_update(
+        {
+            "callback_query": {
+                "id": "callback-1",
+                "data": "free_games:run",
+                "message": {"chat": {"id": 42}},
+            }
+        }
+    )
+
+    free_games.run_now.assert_called_once_with()
+    service.queue_status_update.assert_called_once_with(immediate=True)
+    service._api.assert_awaited_once_with(
+        "answerCallbackQuery",
+        callback_query_id="callback-1",
+        text="Epic run started.",
+    )
+
+
+@pytest.mark.asyncio
+async def test_telegram_callback_updates_epic_module():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(return_value={"running": False, "updating": False}),
+        run_now=MagicMock(),
+        update_runner=MagicMock(return_value=True),
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        free_games=free_games,
+    )
+    service = TelegramService(twitch)
+    service._session = SimpleNamespace(closed=False)
+    service._api = AsyncMock()
+    service.queue_status_update = MagicMock()
+
+    await service._handle_update(
+        {
+            "callback_query": {
+                "id": "callback-2",
+                "data": "free_games:update",
+                "message": {"chat": {"id": 42}},
+            }
+        }
+    )
+
+    free_games.update_runner.assert_called_once_with()
+    service.queue_status_update.assert_called_once_with(immediate=True)
+    service._api.assert_awaited_once_with(
+        "answerCallbackQuery",
+        callback_query_id="callback-2",
+        text="Epic module update started.",
+    )
+
+
+@pytest.mark.asyncio
+async def test_telegram_callback_refreshes_status_message():
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+    )
+    service = TelegramService(twitch)
+    service._session = SimpleNamespace(closed=False)
+    service._api = AsyncMock()
+    service._send_or_edit_status = AsyncMock(return_value=True)
+
+    await service._handle_update(
+        {
+            "callback_query": {
+                "id": "callback-3",
+                "data": "status:refresh",
+                "message": {"chat": {"id": 42}},
+            }
+        }
+    )
+
+    service._api.assert_awaited_once_with(
+        "answerCallbackQuery",
+        callback_query_id="callback-3",
+        text="Status refreshed.",
+    )
+    service._send_or_edit_status.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_telegram_callback_ignores_other_chats():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(return_value={"enabled": True, "running": False}),
+        run_now=MagicMock(return_value=True),
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        free_games=free_games,
+    )
+    service = TelegramService(twitch)
+    service._session = SimpleNamespace(closed=False)
+    service._api = AsyncMock()
+
+    await service._handle_update(
+        {
+            "callback_query": {
+                "id": "callback-4",
+                "data": "free_games:run",
+                "message": {"chat": {"id": 7}},
+            }
+        }
+    )
+
+    free_games.run_now.assert_not_called()
+    service._api.assert_not_awaited()

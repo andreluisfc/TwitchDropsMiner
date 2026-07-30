@@ -28,6 +28,9 @@ logger = logging.getLogger("TwitchDrops")
 TELEGRAM_STATE_PATH = DATA_DIR / "telegram_state.json"
 TELEGRAM_TOKEN_PLACEHOLDER = "********"
 RECENT_CLAIMED_LIMIT = 12
+CALLBACK_FREE_GAMES_RUN = "free_games:run"
+CALLBACK_FREE_GAMES_UPDATE = "free_games:update"
+CALLBACK_STATUS_REFRESH = "status:refresh"
 TELEGRAM_STATE_DEFAULTS: dict[str, Any] = {
     "status_message_id": None,
     "status_message_kind": None,
@@ -174,6 +177,7 @@ class TelegramService:
                 text=message,
                 parse_mode="HTML",
                 disable_web_page_preview=True,
+                reply_markup=self._status_reply_markup(),
             )
             if result:
                 self._save_status_state(message_id)
@@ -185,11 +189,23 @@ class TelegramService:
             text=message,
             parse_mode="HTML",
             disable_web_page_preview=True,
+            reply_markup=self._status_reply_markup(),
         )
         if result and isinstance(result.get("result"), dict):
             self._save_status_state(result["result"].get("message_id"))
             return True
         return False
+
+    def _status_reply_markup(self) -> dict[str, Any]:
+        return {
+            "inline_keyboard": [
+                [
+                    {"text": "🔄 Run Epic", "callback_data": CALLBACK_FREE_GAMES_RUN},
+                    {"text": "⬆️ Update Epic", "callback_data": CALLBACK_FREE_GAMES_UPDATE},
+                ],
+                [{"text": "♻️ Refresh", "callback_data": CALLBACK_STATUS_REFRESH}],
+            ]
+        }
 
     def _format_status_message(self, queue_limit: int = 8) -> str:
         watching_channel = self._twitch.watching_channel.get_with_default(None)
@@ -420,7 +436,7 @@ class TelegramService:
                 "getUpdates",
                 offset=offset,
                 timeout=25,
-                allowed_updates=["message"],
+                allowed_updates=["message", "callback_query"],
                 _timeout=35,
             )
             if result and isinstance(result.get("result"), list):
@@ -432,6 +448,11 @@ class TelegramService:
                 await asyncio.sleep(5)
 
     async def _handle_update(self, update: dict[str, Any]) -> None:
+        callback_query = update.get("callback_query")
+        if isinstance(callback_query, dict):
+            await self._handle_callback_query(callback_query)
+            return
+
         message = update.get("message") or {}
         chat = message.get("chat") or {}
         if str(chat.get("id")) != self._chat_id:
@@ -441,6 +462,54 @@ class TelegramService:
         if text.startswith("/start"):
             await self._sync_panel_button()
             await self.resend_status_message()
+
+    async def _handle_callback_query(self, callback_query: dict[str, Any]) -> None:
+        message = callback_query.get("message") or {}
+        chat = message.get("chat") or {}
+        callback_id = str(callback_query.get("id") or "")
+        if str(chat.get("id")) != self._chat_id:
+            return
+
+        data = str(callback_query.get("data") or "")
+        if data == CALLBACK_STATUS_REFRESH:
+            await self._answer_callback(callback_id, "Status refreshed.")
+            await self._send_or_edit_status()
+            return
+
+        free_games = getattr(self._twitch, "free_games", None)
+        if free_games is None:
+            await self._answer_callback(callback_id, "Epic module is unavailable.")
+            return
+
+        if data == CALLBACK_FREE_GAMES_RUN:
+            status = free_games.get_status()
+            if not status.get("enabled"):
+                await self._answer_callback(callback_id, "Epic module is disabled.")
+            elif status.get("running"):
+                await self._answer_callback(callback_id, "Epic run is already active.")
+            elif free_games.run_now():
+                await self._answer_callback(callback_id, "Epic run started.")
+                self.queue_status_update(immediate=True)
+            else:
+                await self._answer_callback(callback_id, "Epic run could not be started.")
+            return
+
+        if data == CALLBACK_FREE_GAMES_UPDATE:
+            status = free_games.get_status()
+            if status.get("running"):
+                await self._answer_callback(callback_id, "Epic run is active.")
+            elif status.get("updating"):
+                await self._answer_callback(callback_id, "Epic update is already active.")
+            elif free_games.update_runner():
+                await self._answer_callback(callback_id, "Epic module update started.")
+                self.queue_status_update(immediate=True)
+            else:
+                await self._answer_callback(callback_id, "Epic module update could not be started.")
+
+    async def _answer_callback(self, callback_id: str, text: str) -> None:
+        if not callback_id:
+            return
+        await self._api("answerCallbackQuery", callback_query_id=callback_id, text=text)
 
     async def _sync_panel_button(self) -> None:
         panel_url = self._panel_url
