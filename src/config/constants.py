@@ -7,6 +7,7 @@ import sys
 from copy import deepcopy
 from datetime import timedelta
 from enum import Enum, auto
+from hashlib import sha256 as hash_sha256
 from typing import TYPE_CHECKING, Any, Literal, NewType
 
 
@@ -74,7 +75,18 @@ class State(Enum):
 class GQLOperation(JsonType):
     """GraphQL operation with persisted query hash."""
 
-    def __init__(self, name: str, sha256: str, *, variables: JsonType | None = None):
+    def __init__(
+        self,
+        name: str,
+        sha256: str | None = None,
+        *,
+        variables: JsonType | None = None,
+        query: str | None = None,
+    ):
+        if sha256 is None:
+            if query is None:
+                raise ValueError("Either sha256 or query must be provided")
+            sha256 = hash_sha256(query.encode()).hexdigest()
         super().__init__(
             operationName=name,
             extensions={
@@ -84,6 +96,8 @@ class GQLOperation(JsonType):
                 }
             },
         )
+        if query is not None:
+            self.__setitem__("query", query)
         if variables is not None:
             self.__setitem__("variables", variables)
 

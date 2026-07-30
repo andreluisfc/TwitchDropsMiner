@@ -5,6 +5,188 @@ from __future__ import annotations
 from .constants import GQLOperation
 
 
+CAMPAIGN_IN_PROGRESS_FRAGMENT = """
+fragment campaignInProgress on DropCampaign {
+  id
+  detailsURL
+  accountLinkURL
+  startAt
+  endAt
+  imageURL
+  name
+  status
+  self {
+    isAccountConnected
+  }
+  game {
+    id
+    slug
+    name
+    boxArtURL(width: 285, height: 380)
+  }
+  allow {
+    channels {
+      id
+      name
+      url
+    }
+  }
+  eventBasedDrops {
+    id
+    name
+    startAt
+    endAt
+    benefitEdges {
+      benefit {
+        id
+        imageAssetURL
+        name
+        distributionType
+      }
+      entitlementLimit
+    }
+    campaign {
+      id
+      detailsURL
+      self {
+        isAccountConnected
+      }
+    }
+    localizedContent {
+      ... on DropTypeInventoryLocalizedContent {
+        progress
+      }
+    }
+  }
+  timeBasedDrops {
+    id
+    name
+    startAt
+    endAt
+    preconditionDrops {
+      id
+    }
+    requiredMinutesWatched
+    requiredSubs
+    benefitEdges {
+      benefit {
+        id
+        imageAssetURL
+        name
+        distributionType
+      }
+      entitlementLimit
+      claimCount
+    }
+    self {
+      hasPreconditionsMet
+      currentMinutesWatched
+      currentSubs
+      isClaimed
+      dropInstanceID
+    }
+    campaign {
+      id
+      detailsURL
+      accountLinkURL
+      self {
+        isAccountConnected
+      }
+    }
+    localizedContent {
+      ... on DropTypeInventoryLocalizedContent {
+        progress
+      }
+    }
+  }
+}
+""".strip()
+
+DROP_CAMPAIGN_FRAGMENT = """
+fragment dropCampaign on DropCampaign {
+  id
+  name
+  owner {
+    id
+    name
+  }
+  game {
+    id
+    displayName
+    boxArtURL(width: 120, height: 160)
+  }
+  status
+  startAt
+  endAt
+  detailsURL
+  accountLinkURL
+  self {
+    isAccountConnected
+  }
+}
+""".strip()
+
+INVENTORY_QUERY = f"""
+query Inventory {{
+  currentUser {{
+    inventory {{
+      dropCampaignsInProgress {{
+        ...campaignInProgress
+      }}
+      gameEventDrops {{
+        id
+        lastAwardedAt
+      }}
+    }}
+  }}
+}}
+
+{CAMPAIGN_IN_PROGRESS_FRAGMENT}
+""".strip()
+
+CAMPAIGNS_QUERY = f"""
+query ViewerDropsDashboard {{
+  currentUser {{
+    id
+    login
+    dropCampaigns {{
+      ...dropCampaign
+    }}
+  }}
+}}
+
+{DROP_CAMPAIGN_FRAGMENT}
+""".strip()
+
+CAMPAIGN_DETAILS_QUERY = f"""
+query DropCampaignDetails($channelLogin: ID!, $dropID: ID!) {{
+  user(id: $channelLogin) {{
+    dropCampaign(id: $dropID) {{
+      ...campaignInProgress
+    }}
+  }}
+}}
+
+{CAMPAIGN_IN_PROGRESS_FRAGMENT}
+""".strip()
+
+CLAIM_DROP_QUERY = """
+mutation DropsPage_ClaimDropRewards($input: ClaimDropRewardsInput!) {
+  claimDropRewards(input: $input) {
+    status
+    isUserAccountConnected
+    dropType {
+      id
+      campaign {
+        id
+        detailsURL
+      }
+    }
+  }
+}
+""".strip()
+
+
 GQL_OPERATIONS: dict[str, GQLOperation] = {
     # returns stream information for a particular channel
     "GetStreamInfo": GQLOperation(
@@ -28,7 +210,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # can be used to claim a drop
     "ClaimDrop": GQLOperation(
         "DropsPage_ClaimDropRewards",
-        "2f884fa187b8fadb2a49db0adc033e636f7b6aaee6e76de1e2bba9a7baf0daf6",
+        query=CLAIM_DROP_QUERY,
         variables={
             "input": {
                 "dropInstanceID": ...,  # drop claim_id
@@ -46,10 +228,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # returns all in-progress campaigns
     "Inventory": GQLOperation(
         "Inventory",
-        "e0765ebaa8e8eeb4043cc6dfeab3eac7f682ef5f724b81367e6e55c7aef2be4c",
-        variables={
-            "fetchRewardCampaigns": False,
-        },
+        query=INVENTORY_QUERY,
     ),
     # returns current state of drops (current drop progress)
     "CurrentDrop": GQLOperation(
@@ -63,17 +242,14 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # returns all available campaigns
     "Campaigns": GQLOperation(
         "ViewerDropsDashboard",
-        "c4d61d7b71d03b324914d3cf8ca0bc23fe25dacf54120cc954321b9704a3f4e2",
-        variables={
-            "fetchRewardCampaigns": False,
-        },
+        query=CAMPAIGNS_QUERY,
     ),
     # returns extended information about a particular campaign
     "CampaignDetails": GQLOperation(
         "DropCampaignDetails",
-        "14b5e8a50777165cfc3971e1d93b4758613fe1c817d5542c398dce70b7a45c05",
+        query=CAMPAIGN_DETAILS_QUERY,
         variables={
-            "channelLogin": ...,  # user login
+            "channelLogin": ...,  # user ID as a str
             "dropID": ...,  # campaign ID
         },
     ),
