@@ -205,6 +205,7 @@ class HubService:
             "details": {
                 "image": status.get("image"),
                 "source": status.get("source"),
+                "attention": status.get("attention"),
                 "next_run_at": status.get("next_run_at"),
                 "last_error": status.get("last_error"),
                 "vnc": status.get("vnc"),

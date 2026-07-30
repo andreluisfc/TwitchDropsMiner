@@ -120,6 +120,42 @@ def test_free_games_status_reads_upstream_revision_from_run_log(monkeypatch):
     assert source["detected_from"] == "accounts/main/last-run.log"
 
 
+def test_free_games_status_detects_epic_captcha_attention(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        account_dir = data_dir / "accounts" / "main"
+        account_dir.mkdir(parents=True)
+        (account_dir / "last-run.log").write_text(
+            "\n".join(
+                [
+                    "Not signed in anymore. Please login in the browser or here in the terminal.",
+                    "Got a captcha during login (likely due to too many attempts)!",
+                ]
+            ),
+            encoding="utf8",
+        )
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main"}],
+                )
+            )
+        )
+        attention = service.get_status()["attention"]
+
+    assert attention == {
+        "required": True,
+        "reason": "captcha_required",
+        "message": "Epic captcha required. Start a manual run and use Browser to solve it.",
+        "account_id": "main",
+    }
+
+
 def test_free_games_state_loader_preserves_dynamic_account_ids(monkeypatch):
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
         state_path = Path(temp_dir) / "free_games_state.json"
@@ -385,7 +421,7 @@ async def test_free_games_run_account_times_out_and_stops_container(monkeypatch)
         async def communicate(self):
             if self.returncode is None:
                 await asyncio.sleep(3600)
-            return b"captcha still waiting", None
+            return b"runner still waiting", None
 
         def kill(self):
             self.killed = True
@@ -427,6 +463,42 @@ async def test_free_games_run_account_times_out_and_stops_container(monkeypatch)
     account_state = service._state["accounts"]["main"]
     assert account_state["last_run_success"] is False
     assert account_state["last_error"] == "Timed out after 1 minute(s)."
+
+
+@pytest.mark.asyncio
+async def test_free_games_run_account_reports_captcha_error(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+
+    class FakeProcess:
+        returncode = 1
+
+        async def communicate(self):
+            return b"Got a captcha during login!", None
+
+    async def fake_exec(*command, **kwargs):
+        return FakeProcess()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[],
+            )
+        )
+    )
+    service._prepare_docker_container = AsyncMock(return_value=True)
+
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", Path(temp_dir))
+        assert not await service._run_account({"id": "main"})
+
+    assert service._state["accounts"]["main"]["last_error"] == (
+        "Epic captcha required. Start a manual run and use Browser to solve it."
+    )
 
 
 @pytest.mark.asyncio

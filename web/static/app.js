@@ -2323,6 +2323,10 @@ function updateHubModules(hub) {
                     main.appendChild(makeElement('div', { class: 'muted-text' }, label));
                 }
             }
+            const attention = module.details?.attention;
+            if (attention?.required && attention.message) {
+                main.appendChild(makeElement('div', { class: 'error-text' }, attention.message));
+            }
         }));
         row.appendChild(makeElement('div', { class: 'hub-module-meta' }, '', meta => {
             meta.appendChild(makeElement('span', { class: module.enabled ? 'status-pill active' : 'status-pill' }, module.enabled ? 'Enabled' : 'Disabled'));
@@ -2481,6 +2485,9 @@ function updateFreeGamesStatus(status) {
             } else {
                 el.appendChild(makeElement('span', {}, label));
             }
+        }
+        if (status.attention?.required && status.attention.message) {
+            el.appendChild(makeElement('span', { class: 'error-text' }, status.attention.message));
         }
         if (status.vnc?.active && status.vnc?.url) {
             el.appendChild(makeElement('a', { href: status.vnc.url, target: '_blank', rel: 'noopener noreferrer' }, 'Browser'));

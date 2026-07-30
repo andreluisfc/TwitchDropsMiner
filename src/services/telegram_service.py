@@ -401,6 +401,10 @@ class TelegramService:
         elif status.get("next_run_at"):
             lines.append(f"⏭ Next run: {self._html(self._format_datetime(status['next_run_at']))}")
 
+        attention = status.get("attention") or {}
+        if attention.get("required") and attention.get("message"):
+            lines.append(f"🚨 {self._html(attention['message'])}")
+
         accounts = status.get("accounts") or []
         if not accounts:
             lines.append("No Epic accounts configured.")

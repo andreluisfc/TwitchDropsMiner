@@ -105,6 +105,7 @@ class FreeGamesService:
                 "actions": ["run", "run_account", "stop", "update"],
             },
             "source": self._source_info(),
+            "attention": self._attention_info(),
             "enabled": self._enabled,
             "runner": self._runner,
             "image": self._image,
@@ -338,14 +339,18 @@ class FreeGamesService:
         text = output.decode(errors="replace")[-12000:]
         log_path.write_text(text, encoding="utf8")
         success = process.returncode == 0 and not timed_out and not self._stop_requested
+        attention = self._classify_attention(text, account_id)
+        last_error = None
+        if not success:
+            last_error = attention.get("message") or self._format_run_error(
+                process.returncode, timed_out, self._stop_requested
+            )
 
         account_state.update(
             {
                 "last_run_finished_at": self._now(),
                 "last_run_success": success,
-                "last_error": None
-                if success
-                else self._format_run_error(process.returncode, timed_out, self._stop_requested),
+                "last_error": last_error,
             }
         )
         self._save_state()
@@ -498,6 +503,46 @@ class FreeGamesService:
             info["build"] = build_match.group("value").strip()
         info["detected_from"] = log_path.relative_to(FREE_GAMES_DATA_DIR).as_posix()
         return info
+
+    def _attention_info(self) -> dict[str, Any]:
+        info = {
+            "required": False,
+            "reason": None,
+            "message": None,
+            "account_id": None,
+        }
+        log_path = self._latest_run_log_path()
+        if log_path is None:
+            return info
+        account_id = log_path.parent.name
+        text = log_path.read_text(encoding="utf8", errors="replace")
+        attention = self._classify_attention(text, account_id)
+        return attention or info
+
+    def _classify_attention(self, text: str, account_id: str | None = None) -> dict[str, Any]:
+        lower_text = text.lower()
+        if "captcha" in lower_text:
+            return {
+                "required": True,
+                "reason": "captcha_required",
+                "message": "Epic captcha required. Start a manual run and use Browser to solve it.",
+                "account_id": account_id,
+            }
+        if "login timeout" in lower_text:
+            return {
+                "required": True,
+                "reason": "login_timeout",
+                "message": "Epic login timed out. Start a manual run and use Browser to sign in.",
+                "account_id": account_id,
+            }
+        if "not signed in anymore" in lower_text or "please login" in lower_text:
+            return {
+                "required": True,
+                "reason": "login_required",
+                "message": "Epic login required. Start a manual run and use Browser to sign in.",
+                "account_id": account_id,
+            }
+        return {}
 
     def _latest_run_log_path(self) -> Path | None:
         account_dirs = FREE_GAMES_DATA_DIR / "accounts"

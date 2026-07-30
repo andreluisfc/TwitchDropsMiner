@@ -160,6 +160,40 @@ def test_telegram_recent_claimed_drops_are_grouped_by_game():
     ]
 
 
+def test_telegram_free_games_lines_include_attention_message():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(
+            return_value={
+                "enabled": True,
+                "running": False,
+                "next_run_at": "2026-07-31T20:14:00+00:00",
+                "attention": {
+                    "required": True,
+                    "message": "Epic captcha required. Start a manual run and use Browser to solve it.",
+                },
+                "accounts": [{"id": "main", "name": "Main", "last_run_success": False}],
+            }
+        )
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="",
+            telegram_chat_id="",
+            telegram_enabled=False,
+            telegram_panel_url="",
+            telegram_notifications={},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        free_games=free_games,
+    )
+
+    lines = TelegramService(twitch)._format_free_games_lines()
+
+    assert "🚨 Epic captcha required. Start a manual run and use Browser to solve it." in lines
+
+
 def test_telegram_drop_claimed_updates_status_without_separate_message(monkeypatch):
     monkeypatch.setattr("src.services.telegram_service.json_save", MagicMock())
     twitch = SimpleNamespace(

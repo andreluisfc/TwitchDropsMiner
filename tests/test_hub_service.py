@@ -45,6 +45,12 @@ def test_hub_service_returns_twitch_and_epic_modules():
                 "image": "ghcr.io/vogler/free-games-claimer:latest",
                 "next_run_at": "2026-07-31T10:00:00-03:00",
                 "last_error": None,
+                "attention": {
+                    "required": True,
+                    "reason": "captcha_required",
+                    "message": "Epic captcha required.",
+                    "account_id": "main",
+                },
                 "vnc": {"enabled": True, "active": False},
             }
         ),
@@ -75,6 +81,7 @@ def test_hub_service_returns_twitch_and_epic_modules():
     assert epic_module["details"]["source"]["revision"] == (
         "99c1f05302aeece21a628797cfdffb561ee38956"
     )
+    assert epic_module["details"]["attention"]["reason"] == "captcha_required"
 
 
 def test_hub_service_labels_epic_setup_state():
