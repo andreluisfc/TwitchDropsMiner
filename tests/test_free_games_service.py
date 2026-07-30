@@ -2,7 +2,7 @@ import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -180,6 +180,72 @@ def test_free_games_run_now_requires_enabled_account(monkeypatch):
     assert not service.run_now()
     assert service.get_status()["last_error"] == "No enabled Epic accounts configured."
     twitch.telegram.queue_status_update.assert_called_once()
+
+
+def test_free_games_next_run_uses_started_at_when_run_was_interrupted():
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[{"id": "main"}],
+            )
+        )
+    )
+    service._state["last_run_finished_at"] = None
+    service._state["last_run_started_at"] = "2026-07-30T10:00:00+00:00"
+
+    assert service._next_run_at() == "2026-07-31T10:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_free_games_recovers_interrupted_state(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[],
+            )
+        )
+    )
+    service._state.update({"running": True, "updating": False, "active_account_id": "main"})
+    service._docker_container_running = AsyncMock(return_value=False)
+
+    await service._recover_interrupted_state()
+
+    assert service._state["running"] is False
+    assert service._state["active_account_id"] is None
+    assert service._state["last_error"] == "Previous Epic run was interrupted."
+
+
+@pytest.mark.asyncio
+async def test_free_games_recovery_preserves_active_docker_container(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[],
+            )
+        )
+    )
+    service._state.update({"running": True, "updating": False, "active_account_id": "main"})
+    service._docker_container_running = AsyncMock(return_value=True)
+
+    await service._recover_interrupted_state()
+
+    assert service._state["running"] is True
+    assert service._state["active_account_id"] == "main"
+    assert "last_error" not in service._state or service._state["last_error"] is None
 
 
 @pytest.mark.asyncio

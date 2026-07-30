@@ -61,6 +61,7 @@ class FreeGamesService:
         )
 
     async def start(self) -> None:
+        await self._recover_interrupted_state()
         if self._scheduler_task is None or self._scheduler_task.done():
             self._scheduler_task = self._create_task(self._scheduler_loop())
 
@@ -128,6 +129,10 @@ class FreeGamesService:
 
     async def _scheduler_loop(self) -> None:
         while True:
+            if self._state.get("running") and (
+                self._run_task is None or self._run_task.done()
+            ):
+                await self._recover_interrupted_state()
             if self._enabled and self._due_for_scheduled_run():
                 self.run_now()
             await asyncio.sleep(60)
@@ -484,14 +489,46 @@ class FreeGamesService:
         return datetime.fromisoformat(next_run) <= datetime.now().astimezone()
 
     def _next_run_at(self) -> str | None:
-        finished_at = self._state.get("last_run_finished_at")
-        if not finished_at:
+        reference_at = self._state.get("last_run_finished_at") or self._state.get(
+            "last_run_started_at"
+        )
+        if not reference_at:
             return None
         try:
-            finished = datetime.fromisoformat(str(finished_at))
+            reference = datetime.fromisoformat(str(reference_at))
         except ValueError:
             return None
-        return (finished + timedelta(hours=self._schedule_hours)).isoformat(timespec="seconds")
+        return (reference + timedelta(hours=self._schedule_hours)).isoformat(timespec="seconds")
+
+    async def _recover_interrupted_state(self) -> None:
+        if not self._state.get("running") and not self._state.get("updating"):
+            return
+
+        if self._state.get("running"):
+            active_account_id = str(self._state.get("active_account_id") or "")
+            if (
+                self._runner == "docker"
+                and active_account_id
+                and await self._docker_container_running(active_account_id)
+            ):
+                return
+            self._state["last_error"] = "Previous Epic run was interrupted."
+        elif self._state.get("updating"):
+            self._state["last_error"] = "Previous Epic module update was interrupted."
+        self._state["running"] = False
+        self._state["updating"] = False
+        self._state["active_account_id"] = None
+        self._save_state()
+
+    async def _docker_container_running(self, account_id: str) -> bool:
+        inspect = await self._docker_output(
+            "docker",
+            "inspect",
+            "-f",
+            "{{.State.Running}}",
+            self._docker_container_name(account_id),
+        )
+        return inspect[0] == 0 and inspect[1].strip().lower() == "true"
 
     def _save_state(self) -> None:
         json_save(FREE_GAMES_STATE_PATH, self._state, sort=True)
