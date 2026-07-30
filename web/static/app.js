@@ -2433,6 +2433,7 @@ function renderFreeGamesAccounts(accounts = []) {
             el.appendChild(makeElement('input', { type: 'password', class: 'free-games-account-password', placeholder: 'Password', value: account.password || '' }));
             el.appendChild(makeElement('input', { type: 'password', class: 'free-games-account-otpkey', placeholder: 'OTP key', value: account.otpkey || '' }));
             el.appendChild(makeElement('input', { type: 'password', class: 'free-games-account-parental-pin', placeholder: 'Parental PIN', value: account.parental_pin || '' }));
+            el.appendChild(makeElement('input', { type: 'password', class: 'free-games-account-vnc-password', placeholder: 'noVNC password', value: account.vnc_password || '' }));
             el.appendChild(makeElement('label', { class: 'filter-checkbox' }, '', label => {
                 label.appendChild(makeElement('input', { type: 'checkbox', class: 'free-games-account-enabled' }, '', input => {
                     input.checked = account.enabled !== false;
@@ -2462,6 +2463,7 @@ function collectFreeGamesAccounts() {
             password: row.querySelector('.free-games-account-password')?.value.trim() || '',
             otpkey: row.querySelector('.free-games-account-otpkey')?.value.trim() || '',
             parental_pin: row.querySelector('.free-games-account-parental-pin')?.value.trim() || '',
+            vnc_password: row.querySelector('.free-games-account-vnc-password')?.value.trim() || '',
             enabled: row.querySelector('.free-games-account-enabled')?.checked !== false,
         };
     }).filter(account => account.id || account.email);
@@ -2469,7 +2471,7 @@ function collectFreeGamesAccounts() {
 
 function addFreeGamesAccount() {
     const accounts = collectFreeGamesAccounts();
-    accounts.push({ id: '', name: '', email: '', password: '', otpkey: '', parental_pin: '', enabled: true });
+    accounts.push({ id: '', name: '', email: '', password: '', otpkey: '', parental_pin: '', vnc_password: '', enabled: true });
     state.settings.free_games_accounts = accounts;
     renderFreeGamesAccounts(accounts);
 }

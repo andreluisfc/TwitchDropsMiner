@@ -205,7 +205,7 @@ class SettingsManager:
 
     def _mask_free_games_account(self, account: dict[str, Any]) -> dict[str, Any]:
         masked = account.copy()
-        for key in ("password", "otpkey", "parental_pin"):
+        for key in ("password", "otpkey", "parental_pin", "vnc_password"):
             if masked.get(key):
                 masked[key] = SECRET_PLACEHOLDER
         return masked
@@ -234,8 +234,9 @@ class SettingsManager:
                 "password": str(raw_account.get("password") or "").strip(),
                 "otpkey": str(raw_account.get("otpkey") or "").strip(),
                 "parental_pin": str(raw_account.get("parental_pin") or "").strip(),
+                "vnc_password": str(raw_account.get("vnc_password") or "").strip(),
             }
-            for secret_key in ("password", "otpkey", "parental_pin"):
+            for secret_key in ("password", "otpkey", "parental_pin", "vnc_password"):
                 if account[secret_key] == SECRET_PLACEHOLDER:
                     account[secret_key] = str(current.get(secret_key) or "")
             accounts.append(account)

@@ -289,9 +289,11 @@ class FreeGamesService:
             "SCREENSHOTS_DIR=/fgc/data/screenshots",
             "-e",
             "SHOW=1",
+            "-p",
+            "127.0.0.1:6080:6080",
         ]
         env = self._account_env(account, account_dir)
-        for key in ("EG_EMAIL", "EG_PASSWORD", "EG_OTPKEY", "EG_PARENTALPIN"):
+        for key in ("EG_EMAIL", "EG_PASSWORD", "EG_OTPKEY", "EG_PARENTALPIN", "VNC_PASSWORD"):
             if env.get(key):
                 command.extend(["-e", key])
         command.extend([self._image, "node", "epic-games"])
@@ -307,6 +309,7 @@ class FreeGamesService:
             "password": "EG_PASSWORD",
             "otpkey": "EG_OTPKEY",
             "parental_pin": "EG_PARENTALPIN",
+            "vnc_password": "VNC_PASSWORD",
         }
         for setting_key, env_key in mapping.items():
             value = str(account.get(setting_key) or "").strip()

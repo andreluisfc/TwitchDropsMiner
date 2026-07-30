@@ -37,6 +37,7 @@ class FreeGamesAccount(TypedDict, total=False):
     password: str
     otpkey: str
     parental_pin: str
+    vnc_password: str
     enabled: bool
 
 

@@ -70,6 +70,7 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
         "password": "secret-password",
         "otpkey": "otp-secret",
         "parental_pin": "1234",
+        "vnc_password": "vnc-secret",
     }
 
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -80,8 +81,11 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
     assert "secret-password" not in command
     assert "otp-secret" not in command
     assert "1234" not in command
+    assert "vnc-secret" not in command
     assert env["EG_PASSWORD"] == "secret-password"
+    assert env["VNC_PASSWORD"] == "vnc-secret"
     assert "/opt/tdm/data/free-games/accounts/main:/fgc/data" in command
+    assert "127.0.0.1:6080:6080" in command
 
 
 def test_settings_manager_masks_and_preserves_free_games_secrets(monkeypatch):
@@ -94,6 +98,7 @@ def test_settings_manager_masks_and_preserves_free_games_secrets(monkeypatch):
                 "password": "secret-password",
                 "otpkey": "otp-secret",
                 "parental_pin": "1234",
+                "vnc_password": "vnc-secret",
                 "enabled": True,
             }
         ],
@@ -110,6 +115,7 @@ def test_settings_manager_masks_and_preserves_free_games_secrets(monkeypatch):
     assert masked["password"] == SECRET_PLACEHOLDER
     assert masked["otpkey"] == SECRET_PLACEHOLDER
     assert masked["parental_pin"] == SECRET_PLACEHOLDER
+    assert masked["vnc_password"] == SECRET_PLACEHOLDER
 
     manager.update_settings(
         {
@@ -121,6 +127,7 @@ def test_settings_manager_masks_and_preserves_free_games_secrets(monkeypatch):
                     "password": SECRET_PLACEHOLDER,
                     "otpkey": SECRET_PLACEHOLDER,
                     "parental_pin": SECRET_PLACEHOLDER,
+                    "vnc_password": SECRET_PLACEHOLDER,
                     "enabled": True,
                 }
             ]
@@ -131,3 +138,4 @@ def test_settings_manager_masks_and_preserves_free_games_secrets(monkeypatch):
     assert settings.free_games_accounts[0]["password"] == "secret-password"
     assert settings.free_games_accounts[0]["otpkey"] == "otp-secret"
     assert settings.free_games_accounts[0]["parental_pin"] == "1234"
+    assert settings.free_games_accounts[0]["vnc_password"] == "vnc-secret"
