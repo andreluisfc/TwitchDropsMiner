@@ -263,6 +263,25 @@ async def get_free_games_status():
     return twitch_client.free_games.get_status()
 
 
+@app.get("/api/free-games/logs/{kind}")
+async def get_free_games_log(
+    kind: str,
+    account_id: str | None = None,
+    max_chars: int = 8000,
+):
+    """Get a sanitized free-games module log tail."""
+    if not twitch_client:
+        raise HTTPException(status_code=503, detail="Twitch client not initialized")
+    result = twitch_client.free_games.get_log(
+        kind,
+        account_id=account_id,
+        max_chars=max_chars,
+    )
+    if not result.get("available"):
+        raise HTTPException(status_code=404, detail="Log is not available")
+    return result
+
+
 @app.get("/api/hub/modules")
 async def get_hub_modules():
     """Get normalized hub module catalog."""

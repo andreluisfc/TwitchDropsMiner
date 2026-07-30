@@ -149,6 +149,33 @@ class FreeGamesService:
         self._update_task = self._create_task(self._update_runner())
         return self._update_task is not None
 
+    def get_log(
+        self,
+        kind: str,
+        *,
+        account_id: str | None = None,
+        max_chars: int = 8000,
+    ) -> dict[str, Any]:
+        log_path = self._log_path_for_kind(kind, account_id)
+        info = self._log_info(log_path)
+        normalized_max_chars = min(max(1000, int(max_chars or 8000)), 20000)
+        if not info["available"] or log_path is None:
+            return {
+                **info,
+                "kind": kind,
+                "content": "",
+                "truncated": False,
+            }
+
+        text = log_path.read_text(encoding="utf8", errors="replace")
+        truncated = len(text) > normalized_max_chars
+        return {
+            **info,
+            "kind": kind,
+            "content": self._redact_log_text(text[-normalized_max_chars:]),
+            "truncated": truncated,
+        }
+
     def stop_run(self) -> bool:
         if not self._state.get("running"):
             return False
@@ -594,6 +621,18 @@ class FreeGamesService:
             "last_update": self._log_info(FREE_GAMES_DATA_DIR / "last-update.log"),
         }
 
+    def _log_path_for_kind(self, kind: str, account_id: str | None = None) -> Path | None:
+        normalized_kind = kind.replace("-", "_")
+        if normalized_kind == "latest_run":
+            return self._latest_run_log_path()
+        if normalized_kind == "last_update":
+            return FREE_GAMES_DATA_DIR / "last-update.log"
+        if normalized_kind == "account_run":
+            if not account_id:
+                return None
+            return self._account_run_log_path(account_id)
+        return None
+
     def _log_info(self, log_path: Path | None) -> dict[str, Any]:
         if log_path is None or not log_path.is_file():
             return {
@@ -615,6 +654,24 @@ class FreeGamesService:
             ),
             "size_bytes": stat.st_size,
         }
+
+    def _redact_log_text(self, text: str) -> str:
+        redacted = text
+        for account in self._accounts:
+            for key in ("password", "otpkey", "parental_pin", "vnc_password"):
+                value = str(account.get(key) or "").strip()
+                if len(value) >= 4:
+                    redacted = redacted.replace(value, "[redacted]")
+        redaction_patterns = [
+            r"(?i)(bearer\s+)[^\s]+",
+            r"(?i)(authorization:\s*)[^\r\n]+",
+            r"(?i)(cookie:\s*)[^\r\n]+",
+            r"(?i)((?:password|passwd|otpkey|parentalpin|vnc_password)\s*[=:]\s*)[^\s]+",
+            r"(?i)((?:EG_PASSWORD|EG_OTPKEY|EG_PARENTALPIN|VNC_PASSWORD)=)[^\s]+",
+        ]
+        for pattern in redaction_patterns:
+            redacted = re.sub(pattern, r"\1[redacted]", redacted)
+        return redacted
 
     def _read_epic_claims(self, account_id: str, limit: int = 8) -> dict[str, Any]:
         db_path = self._account_data_dir(account_id) / "db.json"

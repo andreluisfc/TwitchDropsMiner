@@ -2393,6 +2393,12 @@ function formatLogInfo(log, label) {
     return `${label}: ${details.join(' · ') || log.path || 'available'}`;
 }
 
+function appendFreeGamesLogButton(parent, kind, label, accountId = null) {
+    parent.appendChild(makeElement('button', { type: 'button', class: 'small-btn' }, label, button => {
+        button.addEventListener('click', () => loadFreeGamesLog(kind, accountId));
+    }));
+}
+
 const HUB_MODULE_ACTION_LABELS = {
     reload: 'Reload',
     run: 'Run',
@@ -2552,6 +2558,12 @@ function updateFreeGamesStatus(status) {
         const latestRunLog = formatLogInfo(status.logs?.latest_run, 'Run log');
         if (latestRunLog) {
             el.appendChild(makeElement('span', {}, latestRunLog));
+            appendFreeGamesLogButton(el, 'latest-run', 'View log');
+        }
+        const lastUpdateLog = formatLogInfo(status.logs?.last_update, 'Update log');
+        if (lastUpdateLog) {
+            el.appendChild(makeElement('span', {}, lastUpdateLog));
+            appendFreeGamesLogButton(el, 'last-update', 'View update log');
         }
         if (status.attention?.required && status.attention.message) {
             el.appendChild(makeElement('span', { class: 'error-text' }, status.attention.message));
@@ -2596,6 +2608,7 @@ function updateFreeGamesStatus(status) {
             const accountRunLog = formatLogInfo(account.logs?.last_run, 'Run log');
             if (accountRunLog) {
                 el.appendChild(makeElement('div', { class: 'muted-text' }, accountRunLog));
+                appendFreeGamesLogButton(el, 'account-run', 'View log', account.id);
             }
             const games = account.claimed_games || [];
             if (games.length) {
@@ -2618,6 +2631,39 @@ function updateFreeGamesStatus(status) {
         grid.appendChild(card);
     });
     container.appendChild(grid);
+}
+
+async function loadFreeGamesLog(kind, accountId = null) {
+    const resultDiv = document.getElementById('free-games-action-result');
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'verify-result loading';
+        resultDiv.textContent = 'Loading Epic log...';
+    }
+    try {
+        const params = new URLSearchParams({ max_chars: '12000' });
+        if (accountId) params.set('account_id', accountId);
+        const response = await fetch(`/api/free-games/logs/${encodeURIComponent(kind)}?${params.toString()}`);
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'Could not load Epic log');
+        }
+        const data = await response.json();
+        if (resultDiv) {
+            const title = data.path ? `Epic log: ${data.path}` : 'Epic log';
+            const suffix = data.truncated ? 'Tail shown' : 'Full saved log shown';
+            resultDiv.className = 'verify-result free-games-log-result';
+            resultDiv.replaceChildren(
+                makeElement('strong', {}, `${title} · ${suffix}`),
+                makeElement('pre', { class: 'free-games-log-output' }, data.content || '')
+            );
+        }
+    } catch (error) {
+        if (resultDiv) {
+            resultDiv.className = 'verify-result error';
+            resultDiv.textContent = error.message;
+        }
+    }
 }
 
 async function updateFreeGamesRunner() {

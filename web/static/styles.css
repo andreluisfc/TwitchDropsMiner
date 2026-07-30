@@ -197,6 +197,24 @@ header h1 {
     color: var(--text-secondary);
 }
 
+.free-games-log-result {
+    color: var(--text-primary);
+}
+
+.free-games-log-output {
+    max-height: 360px;
+    margin-top: 8px;
+    padding: 10px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
 /* Tabs */
 .tabs {
     display: flex;

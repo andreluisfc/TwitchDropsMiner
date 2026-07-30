@@ -128,6 +128,86 @@ def test_free_games_status_reads_upstream_revision_from_run_log(monkeypatch):
     assert status["accounts"][0]["logs"]["last_run"]["path"] == "accounts/main/last-run.log"
 
 
+def test_free_games_log_reader_redacts_configured_secrets_and_headers(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        account_dir = data_dir / "accounts" / "main"
+        account_dir.mkdir(parents=True)
+        (account_dir / "last-run.log").write_text(
+            "\n".join(
+                [
+                    "normal line",
+                    "password=secret-password",
+                    "EG_OTPKEY=otp-secret",
+                    "VNC_PASSWORD=vnc-secret",
+                    "Authorization: Bearer abc123",
+                    "Cookie: session=secret-cookie",
+                ]
+            ),
+            encoding="utf8",
+        )
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[
+                        {
+                            "id": "main",
+                            "password": "secret-password",
+                            "otpkey": "otp-secret",
+                            "vnc_password": "vnc-secret",
+                        }
+                    ],
+                )
+            )
+        )
+
+        log = service.get_log("account-run", account_id="main")
+
+    assert log["available"] is True
+    assert log["path"] == "accounts/main/last-run.log"
+    assert "normal line" in log["content"]
+    assert "secret-password" not in log["content"]
+    assert "otp-secret" not in log["content"]
+    assert "vnc-secret" not in log["content"]
+    assert "abc123" not in log["content"]
+    assert "secret-cookie" not in log["content"]
+    assert log["content"].count("[redacted]") >= 5
+
+
+def test_free_games_log_reader_clamps_to_sanitized_tail(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        (data_dir / "last-update.log").write_text(
+            f"{'x' * 1500}\npassword=tail-secret",
+            encoding="utf8",
+        )
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main", "password": "tail-secret"}],
+                )
+            )
+        )
+
+        log = service.get_log("last-update", max_chars=100)
+
+    assert log["available"] is True
+    assert log["truncated"] is True
+    assert len(log["content"]) <= 1100
+    assert "tail-secret" not in log["content"]
+
+
 def test_free_games_status_detects_epic_captcha_attention(monkeypatch):
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
         data_dir = Path(temp_dir)
