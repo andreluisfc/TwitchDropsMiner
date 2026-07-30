@@ -2315,6 +2315,9 @@ function updateHubModules(hub) {
                 main.appendChild(makeElement('a', { href: module.upstream, target: '_blank', rel: 'noopener noreferrer' }, 'Upstream'));
             }
             const source = module.details?.source;
+            if (source?.version) {
+                main.appendChild(makeElement('div', { class: 'muted-text' }, `Version: ${source.version}`));
+            }
             if (source?.revision) {
                 const label = `Revision: ${shortRevision(source.revision)}`;
                 if (source.revision_url) {
@@ -2322,6 +2325,11 @@ function updateHubModules(hub) {
                 } else {
                     main.appendChild(makeElement('div', { class: 'muted-text' }, label));
                 }
+            }
+            const update = module.details?.update;
+            const updateLabel = formatModuleUpdate(update);
+            if (updateLabel) {
+                main.appendChild(makeElement('div', { class: 'muted-text' }, updateLabel));
             }
             const attention = module.details?.attention;
             if (attention?.required && attention.message) {
@@ -2356,6 +2364,16 @@ function formatMetricName(key) {
 function shortRevision(revision) {
     const text = String(revision || '');
     return /^[0-9a-f]{8,}$/i.test(text) ? text.slice(0, 12) : text;
+}
+
+function formatModuleUpdate(update) {
+    if (!update) return '';
+    if (update.managed_by === 'app_deploy') {
+        return 'Updates with app deploy';
+    }
+    if (!update.last_finished_at) return '';
+    const result = update.last_success ? 'OK' : 'Failed';
+    return `Last update: ${result} · ${formatLocalDateTime(update.last_finished_at)}`;
 }
 
 function getHubModuleActions(module) {

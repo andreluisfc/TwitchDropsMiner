@@ -44,6 +44,9 @@ def test_hub_service_returns_twitch_and_epic_modules():
                 ],
                 "image": "ghcr.io/vogler/free-games-claimer:latest",
                 "next_run_at": "2026-07-31T10:00:00-03:00",
+                "last_update_started_at": "2026-07-30T08:00:00-03:00",
+                "last_update_finished_at": "2026-07-30T08:01:00-03:00",
+                "last_update_success": True,
                 "last_error": None,
                 "attention": {
                     "required": True,
@@ -71,6 +74,9 @@ def test_hub_service_returns_twitch_and_epic_modules():
         "campaigns": 1,
         "wanted_games": 1,
     }
+    assert twitch_module["actions"] == ["reload"]
+    assert twitch_module["details"]["source"]["version"]
+    assert twitch_module["details"]["update"]["managed_by"] == "app_deploy"
     epic_module = status["modules"][1]
     assert epic_module["status"] == "Idle"
     assert epic_module["metrics"] == {
@@ -81,6 +87,13 @@ def test_hub_service_returns_twitch_and_epic_modules():
     assert epic_module["details"]["source"]["revision"] == (
         "99c1f05302aeece21a628797cfdffb561ee38956"
     )
+    assert epic_module["details"]["update"] == {
+        "strategy": "docker",
+        "managed_by": "external_runner",
+        "last_started_at": "2026-07-30T08:00:00-03:00",
+        "last_finished_at": "2026-07-30T08:01:00-03:00",
+        "last_success": True,
+    }
     assert epic_module["details"]["attention"]["reason"] == "captcha_required"
 
 
@@ -169,6 +182,13 @@ def test_hub_service_runs_update_all_action():
         "success": True,
         "action": "update_all",
         "results": [
+            {
+                "success": True,
+                "module_id": "twitch-drops",
+                "action": "update",
+                "skipped": True,
+                "detail": "Built-in module updates are applied by deploying the app branch.",
+            },
             {"success": True, "module_id": "free-games-epic", "action": "update"}
         ],
     }
@@ -187,6 +207,13 @@ def test_hub_service_reports_update_all_failures():
     assert result["status_code"] == 409
     assert result["detail"] == "One or more hub modules could not be updated"
     assert result["results"] == [
+        {
+            "success": True,
+            "module_id": "twitch-drops",
+            "action": "update",
+            "skipped": True,
+            "detail": "Built-in module updates are applied by deploying the app branch.",
+        },
         {
             "success": False,
             "status_code": 409,

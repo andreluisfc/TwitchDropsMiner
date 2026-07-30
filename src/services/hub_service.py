@@ -44,6 +44,7 @@ class HubService:
             }
 
         results = [
+            self._run_twitch_update_action(),
             self._run_epic_action("update", {}),
         ]
         failed = [result for result in results if not result.get("success")]
@@ -77,6 +78,15 @@ class HubService:
             }
         self._twitch.change_state(State.INVENTORY_FETCH)
         return {"success": True, "module_id": "twitch-drops", "action": action}
+
+    def _run_twitch_update_action(self) -> dict[str, Any]:
+        return {
+            "success": True,
+            "module_id": "twitch-drops",
+            "action": "update",
+            "skipped": True,
+            "detail": "Built-in module updates are applied by deploying the app branch.",
+        }
 
     def _run_epic_action(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
         free_games = self._twitch.free_games
@@ -167,13 +177,27 @@ class HubService:
             "status": status,
             "upstream": "https://github.com/rangermix/TwitchDropsMiner",
             "update_strategy": "git-fork",
-            "actions": ["reload", "watch", "claim", "prioritize"],
+            "actions": ["reload"],
             "metrics": {
                 "channels": len(getattr(self._twitch, "channels", {})),
                 "campaigns": len(getattr(self._twitch, "inventory", [])),
                 "wanted_games": len(getattr(self._twitch, "wanted_games", [])),
             },
             "details": {
+                "source": {
+                    "repository": "https://github.com/rangermix/TwitchDropsMiner",
+                    "version": __version__,
+                    "revision": None,
+                    "revision_url": None,
+                    "detected_from": "app",
+                },
+                "update": {
+                    "strategy": "git-fork",
+                    "managed_by": "app_deploy",
+                    "last_started_at": None,
+                    "last_finished_at": None,
+                    "last_success": None,
+                },
                 "login": login,
                 "manual_mode": manual_mode,
                 "watching_channel": getattr(watching_channel, "name", None),
@@ -205,6 +229,7 @@ class HubService:
             "details": {
                 "image": status.get("image"),
                 "source": status.get("source"),
+                "update": self._free_games_update_details(status),
                 "attention": status.get("attention"),
                 "next_run_at": status.get("next_run_at"),
                 "last_error": status.get("last_error"),
@@ -223,3 +248,12 @@ class HubService:
         if not status.get("accounts"):
             return "No accounts configured"
         return "Idle"
+
+    def _free_games_update_details(self, status: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "strategy": status.get("runner"),
+            "managed_by": "external_runner",
+            "last_started_at": status.get("last_update_started_at"),
+            "last_finished_at": status.get("last_update_finished_at"),
+            "last_success": status.get("last_update_success"),
+        }
