@@ -2312,6 +2312,15 @@ function updateHubModules(hub) {
             if (module.upstream) {
                 main.appendChild(makeElement('a', { href: module.upstream, target: '_blank', rel: 'noopener noreferrer' }, 'Upstream'));
             }
+            const source = module.details?.source;
+            if (source?.revision) {
+                const label = `Revision: ${shortRevision(source.revision)}`;
+                if (source.revision_url) {
+                    main.appendChild(makeElement('a', { href: source.revision_url, target: '_blank', rel: 'noopener noreferrer' }, label));
+                } else {
+                    main.appendChild(makeElement('div', { class: 'muted-text' }, label));
+                }
+            }
         }));
         row.appendChild(makeElement('div', { class: 'hub-module-meta' }, '', meta => {
             meta.appendChild(makeElement('span', { class: module.enabled ? 'status-pill active' : 'status-pill' }, module.enabled ? 'Enabled' : 'Disabled'));
@@ -2336,6 +2345,11 @@ function updateHubModules(hub) {
 
 function formatMetricName(key) {
     return String(key).replace(/_/g, ' ');
+}
+
+function shortRevision(revision) {
+    const text = String(revision || '');
+    return /^[0-9a-f]{8,}$/i.test(text) ? text.slice(0, 12) : text;
 }
 
 function getHubModuleActions(module) {
@@ -2418,6 +2432,14 @@ function updateFreeGamesStatus(status) {
         }
         if (status.run_timeout_minutes) {
             el.appendChild(makeElement('span', {}, `Timeout: ${status.run_timeout_minutes} min`));
+        }
+        if (status.source?.revision) {
+            const label = `Revision: ${shortRevision(status.source.revision)}`;
+            if (status.source.revision_url) {
+                el.appendChild(makeElement('a', { href: status.source.revision_url, target: '_blank', rel: 'noopener noreferrer' }, label));
+            } else {
+                el.appendChild(makeElement('span', {}, label));
+            }
         }
         if (status.vnc?.active && status.vnc?.url) {
             el.appendChild(makeElement('a', { href: status.vnc.url, target: '_blank', rel: 'noopener noreferrer' }, 'Browser'));

@@ -84,6 +84,42 @@ def test_free_games_status_exposes_module_metadata_and_account_lookup():
     assert not service.account_exists("missing")
 
 
+def test_free_games_status_reads_upstream_revision_from_run_log(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        account_dir = data_dir / "accounts" / "main"
+        account_dir.mkdir(parents=True)
+        (account_dir / "last-run.log").write_text(
+            "\n".join(
+                [
+                    "Version: https://github.com/vogler/free-games-claimer/tree/99c1f05302aeece21a628797cfdffb561ee38956",
+                    "Build: Thu, 15 May 2025 22:16:05 +0000",
+                    "started checking epic-games",
+                ]
+            ),
+            encoding="utf8",
+        )
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main"}],
+                )
+            )
+        )
+        source = service.get_status()["source"]
+
+    assert source["repository"] == "https://github.com/vogler/free-games-claimer"
+    assert source["revision"] == "99c1f05302aeece21a628797cfdffb561ee38956"
+    assert source["revision_url"].endswith("/99c1f05302aeece21a628797cfdffb561ee38956")
+    assert source["build"] == "Thu, 15 May 2025 22:16:05 +0000"
+    assert source["detected_from"] == "accounts/main/last-run.log"
+
+
 def test_free_games_state_loader_preserves_dynamic_account_ids(monkeypatch):
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
         state_path = Path(temp_dir) / "free_games_state.json"

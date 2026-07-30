@@ -31,6 +31,13 @@ def test_hub_service_returns_twitch_and_epic_modules():
                 "running": False,
                 "updating": False,
                 "runner": "docker",
+                "source": {
+                    "repository": "https://github.com/vogler/free-games-claimer",
+                    "revision": "99c1f05302aeece21a628797cfdffb561ee38956",
+                    "revision_url": "https://github.com/vogler/free-games-claimer/tree/99c1f05302aeece21a628797cfdffb561ee38956",
+                    "build": "Thu, 15 May 2025 22:16:05 +0000",
+                    "detected_from": "accounts/main/last-run.log",
+                },
                 "accounts": [
                     {"id": "main", "enabled": True, "claimed_games": [{"title": "Game A"}]},
                     {"id": "disabled", "enabled": False, "claimed_games": []},
@@ -64,6 +71,9 @@ def test_hub_service_returns_twitch_and_epic_modules():
         "enabled_accounts": 1,
         "claimed_games": 1,
     }
+    assert epic_module["details"]["source"]["revision"] == (
+        "99c1f05302aeece21a628797cfdffb561ee38956"
+    )
 
 
 def test_hub_service_labels_epic_setup_state():

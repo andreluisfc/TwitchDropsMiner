@@ -101,6 +101,7 @@ class FreeGamesService:
                 "update_strategy": self._runner,
                 "actions": ["run", "run_account", "update"],
             },
+            "source": self._source_info(),
             "enabled": self._enabled,
             "runner": self._runner,
             "image": self._image,
@@ -451,6 +452,43 @@ class FreeGamesService:
             "failed_games": claims["failed"],
             "known_games_count": claims["known_count"],
         }
+
+    def _source_info(self) -> dict[str, Any]:
+        info: dict[str, Any] = {
+            "repository": "https://github.com/vogler/free-games-claimer",
+            "revision": None,
+            "revision_url": None,
+            "build": None,
+            "detected_from": None,
+        }
+        log_path = self._latest_run_log_path()
+        if log_path is None:
+            return info
+        text = log_path.read_text(encoding="utf8", errors="replace")
+        version_match = re.search(r"^Version:\s*(?P<value>.+)$", text, re.MULTILINE)
+        build_match = re.search(r"^Build:\s*(?P<value>.+)$", text, re.MULTILINE)
+        if version_match:
+            version = version_match.group("value").strip()
+            info["revision_url"] = version
+            revision_match = re.search(r"/tree/(?P<revision>[0-9a-f]{7,40})$", version)
+            info["revision"] = revision_match.group("revision") if revision_match else version
+        if build_match:
+            info["build"] = build_match.group("value").strip()
+        info["detected_from"] = log_path.relative_to(FREE_GAMES_DATA_DIR).as_posix()
+        return info
+
+    def _latest_run_log_path(self) -> Path | None:
+        account_dirs = FREE_GAMES_DATA_DIR / "accounts"
+        if not account_dirs.exists():
+            return None
+        logs = [
+            path
+            for path in account_dirs.glob("*/last-run.log")
+            if path.is_file()
+        ]
+        if not logs:
+            return None
+        return max(logs, key=lambda path: path.stat().st_mtime)
 
     def _read_epic_claims(self, account_id: str, limit: int = 8) -> dict[str, Any]:
         db_path = self._account_data_dir(account_id) / "db.json"
