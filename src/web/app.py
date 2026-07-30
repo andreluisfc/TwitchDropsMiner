@@ -100,6 +100,7 @@ class SettingsUpdate(BaseModel):
     free_games_image: str | None = None
     free_games_claimer_path: str | None = None
     free_games_schedule_hours: int | None = None
+    free_games_run_timeout_minutes: int | None = None
     free_games_accounts: list[dict] | None = None
 
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import tempfile
 from pathlib import Path
@@ -71,6 +72,7 @@ def test_free_games_status_exposes_module_metadata_and_account_lookup():
     assert status["module"]["id"] == "free-games-epic"
     assert status["module"]["upstream"] == "https://github.com/vogler/free-games-claimer"
     assert "run_account" in status["module"]["actions"]
+    assert status["run_timeout_minutes"] == 15
     assert status["vnc"] == {
         "enabled": True,
         "url": None,
@@ -224,6 +226,61 @@ async def test_free_games_run_accounts_marks_global_failure_when_account_fails(m
     assert service._state["last_run_finished_at"] is not None
     service._run_account.assert_awaited_once_with({"id": "main", "enabled": True})
     assert twitch.telegram.queue_status_update.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_free_games_run_account_times_out_and_stops_container(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+
+    class FakeProcess:
+        returncode = None
+        killed = False
+
+        async def communicate(self):
+            if self.returncode is None:
+                await asyncio.sleep(3600)
+            return b"captcha still waiting", None
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+
+    process = FakeProcess()
+
+    async def fake_exec(*command, **kwargs):
+        return process
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_run_timeout_minutes=1,
+                free_games_accounts=[],
+            )
+        )
+    )
+    service._run_timeout_seconds = lambda: 0.01
+    service._prepare_docker_container = AsyncMock(return_value=True)
+
+    async def fake_docker_output(*command):
+        assert command == ("docker", "rm", "-f", "fgc-epic-main")
+        process.returncode = 137
+        return 0, "removed"
+
+    service._docker_output = fake_docker_output
+
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", Path(temp_dir))
+        success = await service._run_account({"id": "main"})
+
+    assert not success
+    account_state = service._state["accounts"]["main"]
+    assert account_state["last_run_success"] is False
+    assert account_state["last_error"] == "Timed out after 1 minute(s)."
 
 
 @pytest.mark.asyncio

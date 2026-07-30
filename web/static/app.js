@@ -1095,6 +1095,7 @@ function updateSettingsUI(settings) {
     document.getElementById('free-games-image').value = settings.free_games_image || '';
     document.getElementById('free-games-claimer-path').value = settings.free_games_claimer_path || '';
     document.getElementById('free-games-schedule-hours').value = settings.free_games_schedule_hours || 24;
+    document.getElementById('free-games-run-timeout-minutes').value = settings.free_games_run_timeout_minutes || 15;
     renderFreeGamesAccounts(settings.free_games_accounts || []);
 
     const proxyIndicator = document.getElementById('proxy-indicator');
@@ -1616,6 +1617,7 @@ async function saveSettings() {
         free_games_image: document.getElementById('free-games-image').value,
         free_games_claimer_path: document.getElementById('free-games-claimer-path').value,
         free_games_schedule_hours: parseInt(document.getElementById('free-games-schedule-hours').value) || 24,
+        free_games_run_timeout_minutes: parseInt(document.getElementById('free-games-run-timeout-minutes').value) || 15,
         free_games_accounts: collectFreeGamesAccounts()
     };
 
@@ -2131,6 +2133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'free-games-image',
         'free-games-claimer-path',
         'free-games-schedule-hours',
+        'free-games-run-timeout-minutes',
     ].forEach((id) => {
         const element = document.getElementById(id);
         if (element) element.addEventListener('change', saveSettings);
@@ -2412,6 +2415,9 @@ function updateFreeGamesStatus(status) {
         }
         if (status.next_run_at) {
             el.appendChild(makeElement('span', {}, `Next: ${formatLocalDateTime(status.next_run_at)}`));
+        }
+        if (status.run_timeout_minutes) {
+            el.appendChild(makeElement('span', {}, `Timeout: ${status.run_timeout_minutes} min`));
         }
         if (status.vnc?.active && status.vnc?.url) {
             el.appendChild(makeElement('a', { href: status.vnc.url, target: '_blank', rel: 'noopener noreferrer' }, 'Browser'));

@@ -92,6 +92,7 @@ class FreeGamesService:
             "runner": self._runner,
             "image": self._image,
             "schedule_hours": self._schedule_hours,
+            "run_timeout_minutes": self._run_timeout_minutes,
             "running": bool(self._state.get("running")),
             "updating": bool(self._state.get("updating")),
             "active_account_id": self._state.get("active_account_id"),
@@ -285,19 +286,34 @@ class FreeGamesService:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
-        output, _ = await process.communicate()
+        timed_out = False
+        try:
+            output, _ = await asyncio.wait_for(
+                process.communicate(), timeout=self._run_timeout_seconds()
+            )
+        except TimeoutError:
+            timed_out = True
+            await self._stop_timed_out_process(process, account_id)
+            try:
+                output, _ = await asyncio.wait_for(process.communicate(), timeout=30)
+            except TimeoutError:
+                output = b""
+                logger.warning("Timed out while stopping Epic runner process")
         text = output.decode(errors="replace")[-12000:]
         log_path.write_text(text, encoding="utf8")
+        success = process.returncode == 0 and not timed_out
 
         account_state.update(
             {
                 "last_run_finished_at": self._now(),
-                "last_run_success": process.returncode == 0,
-                "last_error": None if process.returncode == 0 else f"Exited with {process.returncode}",
+                "last_run_success": success,
+                "last_error": None
+                if success
+                else self._format_run_error(process.returncode, timed_out),
             }
         )
         self._save_state()
-        return process.returncode == 0
+        return success
 
     def _build_command(self, account: dict[str, Any], account_dir: Path) -> list[str] | None:
         if self._runner == "docker":
@@ -480,6 +496,16 @@ class FreeGamesService:
         return max(1, int(getattr(self._twitch.settings, "free_games_schedule_hours", 24) or 24))
 
     @property
+    def _run_timeout_minutes(self) -> int:
+        return max(
+            1,
+            int(getattr(self._twitch.settings, "free_games_run_timeout_minutes", 15) or 15),
+        )
+
+    def _run_timeout_seconds(self) -> int:
+        return self._run_timeout_minutes * 60
+
+    @property
     def _accounts(self) -> list[dict[str, Any]]:
         accounts = getattr(self._twitch.settings, "free_games_accounts", []) or []
         return [account for account in accounts if isinstance(account, dict) and account.get("id")]
@@ -545,6 +571,19 @@ class FreeGamesService:
             self._docker_container_name(account_id),
         )
         return inspect[0] == 0 and inspect[1].strip().lower() == "true"
+
+    async def _stop_timed_out_process(
+        self, process: asyncio.subprocess.Process, account_id: str
+    ) -> None:
+        if self._runner == "docker":
+            await self._docker_output("docker", "rm", "-f", self._docker_container_name(account_id))
+        if process.returncode is None:
+            process.kill()
+
+    def _format_run_error(self, returncode: int | None, timed_out: bool) -> str:
+        if timed_out:
+            return f"Timed out after {self._run_timeout_minutes} minute(s)."
+        return f"Exited with {returncode}"
 
     async def _adopt_active_docker_run_if_needed(self) -> bool:
         if self._runner != "docker" or not self._state.get("running"):
