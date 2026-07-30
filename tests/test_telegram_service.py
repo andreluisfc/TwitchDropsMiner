@@ -394,6 +394,10 @@ def test_telegram_status_keyboard_includes_epic_account_buttons():
     )
     markup = TelegramService(twitch)._status_reply_markup()
 
+    assert [
+        {"text": "🔄 Run Epic", "callback_data": "free_games:run"},
+        {"text": "⬆️ Update modules", "callback_data": "hub:update_all"},
+    ] in markup["inline_keyboard"]
     assert [{"text": "▶️ Main", "callback_data": "fg:r:0"}] in markup["inline_keyboard"]
     assert all(
         button.get("callback_data") != "fg:r:1"
@@ -568,6 +572,50 @@ async def test_telegram_callback_updates_epic_module():
         "answerCallbackQuery",
         callback_query_id="callback-2",
         text="Epic module update started.",
+    )
+
+
+@pytest.mark.asyncio
+async def test_telegram_callback_updates_hub_modules():
+    hub = SimpleNamespace(
+        run_hub_action=MagicMock(
+            return_value={"success": True, "action": "update_all", "results": []}
+        )
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        hub=hub,
+    )
+    service = TelegramService(twitch)
+    service._session = SimpleNamespace(closed=False)
+    service._api = AsyncMock()
+    service.queue_status_update = MagicMock()
+
+    await service._handle_update(
+        {
+            "callback_query": {
+                "id": "callback-hub",
+                "data": "hub:update_all",
+                "message": {"chat": {"id": 42}},
+            }
+        }
+    )
+
+    hub.run_hub_action.assert_called_once_with("update_all")
+    service.queue_status_update.assert_called_once_with(immediate=True)
+    service._api.assert_awaited_once_with(
+        "answerCallbackQuery",
+        callback_query_id="callback-hub",
+        text="Hub module update started.",
     )
 
 

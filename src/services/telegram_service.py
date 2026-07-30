@@ -31,6 +31,7 @@ RECENT_CLAIMED_LIMIT = 12
 CALLBACK_FREE_GAMES_RUN = "free_games:run"
 CALLBACK_FREE_GAMES_STOP = "free_games:stop"
 CALLBACK_FREE_GAMES_UPDATE = "free_games:update"
+CALLBACK_HUB_UPDATE_ALL = "hub:update_all"
 CALLBACK_STATUS_REFRESH = "status:refresh"
 CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX = "fg:r:"
 TELEGRAM_STATE_DEFAULTS: dict[str, Any] = {
@@ -202,7 +203,7 @@ class TelegramService:
         keyboard = [
             [
                 {"text": "🔄 Run Epic", "callback_data": CALLBACK_FREE_GAMES_RUN},
-                {"text": "⬆️ Update Epic", "callback_data": CALLBACK_FREE_GAMES_UPDATE},
+                {"text": "⬆️ Update modules", "callback_data": CALLBACK_HUB_UPDATE_ALL},
             ]
         ]
         free_games = getattr(self._twitch, "free_games", None)
@@ -506,6 +507,22 @@ class TelegramService:
         if data == CALLBACK_STATUS_REFRESH:
             await self._answer_callback(callback_id, "Status refreshed.")
             await self._send_or_edit_status()
+            return
+
+        if data == CALLBACK_HUB_UPDATE_ALL:
+            hub = getattr(self._twitch, "hub", None)
+            if hub is None:
+                await self._answer_callback(callback_id, "Hub is unavailable.")
+                return
+            result = hub.run_hub_action("update_all")
+            if result.get("success"):
+                await self._answer_callback(callback_id, "Hub module update started.")
+                self.queue_status_update(immediate=True)
+            else:
+                await self._answer_callback(
+                    callback_id,
+                    str(result.get("detail") or "Hub module update could not be started."),
+                )
             return
 
         free_games = getattr(self._twitch, "free_games", None)
