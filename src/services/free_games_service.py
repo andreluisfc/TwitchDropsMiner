@@ -62,6 +62,7 @@ class FreeGamesService:
 
     async def start(self) -> None:
         await self._recover_interrupted_state()
+        await self._adopt_active_docker_run_if_needed()
         if self._scheduler_task is None or self._scheduler_task.done():
             self._scheduler_task = self._create_task(self._scheduler_loop())
 
@@ -133,6 +134,7 @@ class FreeGamesService:
                 self._run_task is None or self._run_task.done()
             ):
                 await self._recover_interrupted_state()
+                await self._adopt_active_docker_run_if_needed()
             if self._enabled and self._due_for_scheduled_run():
                 self.run_now()
             await asyncio.sleep(60)
@@ -164,7 +166,8 @@ class FreeGamesService:
             for account in accounts:
                 self._state["active_account_id"] = account["id"]
                 self._save_state()
-                await self._run_account(account)
+                account_success = await self._run_account(account)
+                success = success and account_success
         except Exception as exc:
             success = False
             self._state["last_error"] = str(exc)
@@ -232,7 +235,7 @@ class FreeGamesService:
             self._save_state()
             self._twitch.telegram.queue_status_update()
 
-    async def _run_account(self, account: dict[str, Any]) -> None:
+    async def _run_account(self, account: dict[str, Any]) -> bool:
         account_id = str(account["id"])
         started_at = self._now()
         account_state = self._state.setdefault("accounts", {}).setdefault(account_id, {})
@@ -253,12 +256,12 @@ class FreeGamesService:
                 }
             )
             self._save_state()
-            return
+            return False
 
         if self._runner == "docker" and not await self._prepare_docker_container(
             account_id, account_state
         ):
-            return
+            return False
 
         logger.info("Running free games claimer for Epic account %s", account.get("name"))
         env = os.environ.copy()
@@ -282,6 +285,7 @@ class FreeGamesService:
             }
         )
         self._save_state()
+        return process.returncode == 0
 
     def _build_command(self, account: dict[str, Any], account_dir: Path) -> list[str] | None:
         if self._runner == "docker":
@@ -529,6 +533,77 @@ class FreeGamesService:
             self._docker_container_name(account_id),
         )
         return inspect[0] == 0 and inspect[1].strip().lower() == "true"
+
+    async def _adopt_active_docker_run_if_needed(self) -> bool:
+        if self._runner != "docker" or not self._state.get("running"):
+            return False
+        if self._run_task is not None and not self._run_task.done():
+            return True
+
+        account_id = str(self._state.get("active_account_id") or "")
+        if not account_id or not await self._docker_container_running(account_id):
+            return False
+
+        self._run_task = self._create_task(self._monitor_adopted_docker_container(account_id))
+        return self._run_task is not None
+
+    async def _monitor_adopted_docker_container(self, account_id: str) -> None:
+        container_name = self._docker_container_name(account_id)
+        account_state = self._state.setdefault("accounts", {}).setdefault(account_id, {})
+        returncode_text = ""
+        try:
+            wait = await self._docker_output("docker", "wait", container_name)
+            returncode_text = wait[1].strip()
+            logs = await self._docker_output("docker", "logs", container_name)
+            if logs[1]:
+                log_path = self._account_data_dir(account_id) / "last-run.log"
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                log_path.write_text(logs[1][-12000:], encoding="utf8")
+            success = wait[0] == 0 and returncode_text == "0"
+            account_state.update(
+                {
+                    "last_run_finished_at": self._now(),
+                    "last_run_success": success,
+                    "last_error": None
+                    if success
+                    else f"Exited with {returncode_text or wait[0]}",
+                }
+            )
+            self._state.update(
+                {
+                    "running": False,
+                    "active_account_id": None,
+                    "last_run_finished_at": self._now(),
+                    "last_run_success": success,
+                    "last_error": None
+                    if success
+                    else f"Epic runner exited with {returncode_text or wait[0]}",
+                }
+            )
+            self._save_state()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            account_state.update(
+                {
+                    "last_run_finished_at": self._now(),
+                    "last_run_success": False,
+                    "last_error": str(exc),
+                }
+            )
+            self._state.update(
+                {
+                    "running": False,
+                    "active_account_id": None,
+                    "last_run_finished_at": self._now(),
+                    "last_run_success": False,
+                    "last_error": str(exc),
+                }
+            )
+            self._save_state()
+            logger.warning("Adopted Epic runner monitoring failed", exc_info=True)
+        finally:
+            self._twitch.telegram.queue_status_update()
 
     def _save_state(self) -> None:
         json_save(FREE_GAMES_STATE_PATH, self._state, sort=True)

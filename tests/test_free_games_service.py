@@ -201,6 +201,31 @@ def test_free_games_next_run_uses_started_at_when_run_was_interrupted():
 
 
 @pytest.mark.asyncio
+async def test_free_games_run_accounts_marks_global_failure_when_account_fails(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    twitch = make_twitch(
+        SimpleNamespace(
+            free_games_enabled=True,
+            free_games_runner="docker",
+            free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+            free_games_schedule_hours=24,
+            free_games_accounts=[{"id": "main", "enabled": True}],
+        )
+    )
+    service = FreeGamesService(twitch)
+    service._run_account = AsyncMock(return_value=False)
+
+    await service._run_accounts()
+
+    assert service._state["running"] is False
+    assert service._state["active_account_id"] is None
+    assert service._state["last_run_success"] is False
+    assert service._state["last_run_finished_at"] is not None
+    service._run_account.assert_awaited_once_with({"id": "main", "enabled": True})
+    assert twitch.telegram.queue_status_update.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_free_games_recovers_interrupted_state(monkeypatch):
     monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
     service = FreeGamesService(
@@ -246,6 +271,80 @@ async def test_free_games_recovery_preserves_active_docker_container(monkeypatch
     assert service._state["running"] is True
     assert service._state["active_account_id"] == "main"
     assert "last_error" not in service._state or service._state["last_error"] is None
+
+
+@pytest.mark.asyncio
+async def test_free_games_adopts_active_docker_container(monkeypatch):
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[],
+            )
+        )
+    )
+    service._state.update({"running": True, "active_account_id": "main"})
+    service._docker_container_running = AsyncMock(return_value=True)
+
+    def fake_create_task(coro):
+        coro.close()
+        return SimpleNamespace(done=lambda: False)
+
+    service._create_task = MagicMock(side_effect=fake_create_task)
+
+    assert await service._adopt_active_docker_run_if_needed()
+    service._create_task.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_free_games_monitor_adopted_container_updates_state(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        temp_path = Path(temp_dir)
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", temp_path)
+        twitch = make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[],
+            )
+        )
+        service = FreeGamesService(twitch)
+        service._state.update(
+            {
+                "running": True,
+                "active_account_id": "main",
+                "accounts": {"main": {}},
+            }
+        )
+        calls = []
+
+        async def fake_docker_output(*command):
+            calls.append(command)
+            if command[:2] == ("docker", "wait"):
+                return 0, "0\n"
+            return 0, "claimed output"
+
+        service._docker_output = fake_docker_output
+
+        await service._monitor_adopted_docker_container("main")
+
+        assert calls == [
+            ("docker", "wait", "fgc-epic-main"),
+            ("docker", "logs", "fgc-epic-main"),
+        ]
+        assert service._state["running"] is False
+        assert service._state["last_run_success"] is True
+        assert service._state["accounts"]["main"]["last_run_success"] is True
+        assert (temp_path / "accounts" / "main" / "last-run.log").read_text(
+            encoding="utf8"
+        ) == "claimed output"
+        twitch.telegram.queue_status_update.assert_called_once()
 
 
 @pytest.mark.asyncio
