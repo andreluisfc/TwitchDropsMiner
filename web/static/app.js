@@ -2376,20 +2376,45 @@ function formatModuleUpdate(update) {
     return `Last update: ${result} · ${formatLocalDateTime(update.last_finished_at)}`;
 }
 
+const HUB_MODULE_ACTION_LABELS = {
+    reload: 'Reload',
+    run: 'Run',
+    stop: 'Stop',
+    update: 'Update',
+};
+
+const HUB_MODULE_ACTIONS_REQUIRING_PARAMS = new Set(['run_account']);
+
+function formatHubModuleActionLabel(action) {
+    return HUB_MODULE_ACTION_LABELS[action] || String(action).replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function isHubModuleActionDisabled(module, action) {
+    const busy = Boolean(module.running || module.updating);
+    if (action === 'run') {
+        const metrics = module.metrics || {};
+        const hasAccountMetric = Object.prototype.hasOwnProperty.call(metrics, 'enabled_accounts');
+        return busy || !module.enabled || (hasAccountMetric && Number(metrics.enabled_accounts || 0) === 0);
+    }
+    if (action === 'stop') return !module.running;
+    if (action === 'update') return busy;
+    return false;
+}
+
 function getHubModuleActions(module) {
-    if (module.id === 'twitch-drops') {
-        return [{ id: 'reload', label: 'Reload', disabled: false }];
-    }
-    if (module.id === 'free-games-epic') {
-        const busy = Boolean(module.running || module.updating);
-        const enabledAccounts = Number(module.metrics?.enabled_accounts || 0);
-        return [
-            { id: 'run', label: 'Run', disabled: busy || !module.enabled || enabledAccounts === 0 },
-            { id: 'stop', label: 'Stop', disabled: !module.running },
-            { id: 'update', label: 'Update', disabled: busy },
-        ];
-    }
-    return [];
+    return (Array.isArray(module.actions) ? module.actions : [])
+        .map(action => {
+            const id = typeof action === 'string' ? action : action?.id;
+            if (!id || HUB_MODULE_ACTIONS_REQUIRING_PARAMS.has(id)) return null;
+            return {
+                id,
+                label: typeof action === 'object' && action?.label ? action.label : formatHubModuleActionLabel(id),
+                disabled: typeof action === 'object' && action?.disabled !== undefined
+                    ? Boolean(action.disabled)
+                    : isHubModuleActionDisabled(module, id),
+            };
+        })
+        .filter(Boolean);
 }
 
 async function runHubModuleAction(moduleId, action) {

@@ -16,3 +16,14 @@ def test_app_js_only_uses_innerhtml_to_clear_elements():
             unsafe_assignments.append(f"line {line_number}: {match.group(0).strip()}")
 
     assert unsafe_assignments == []
+
+
+def test_hub_module_actions_are_declared_by_modules():
+    app_source = APP_JS.read_text(encoding="utf-8")
+    action_fn = app_source[
+        app_source.index("function getHubModuleActions") : app_source.index("async function runHubModuleAction")
+    ]
+
+    assert "module.actions" in action_fn
+    assert "module.id ===" not in action_fn
+    assert "run_account" in app_source
