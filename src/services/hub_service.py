@@ -28,11 +28,33 @@ class HubService:
         return {
             "name": "TDM Hub",
             "version": __version__,
+            "actions": ["update_all"],
             "modules": [
                 self._twitch_drops_module(),
                 self._epic_freebies_module(),
             ],
         }
+
+    def run_hub_action(self, action: str) -> dict[str, Any]:
+        if action != "update_all":
+            return {
+                "success": False,
+                "status_code": 404,
+                "detail": f"Unsupported hub action: {action}",
+            }
+
+        results = [
+            self._run_epic_action("update", {}),
+        ]
+        failed = [result for result in results if not result.get("success")]
+        if failed:
+            return {
+                "success": False,
+                "status_code": 409,
+                "detail": "One or more hub modules could not be updated",
+                "results": results,
+            }
+        return {"success": True, "action": action, "results": results}
 
     def run_action(self, module_id: str, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         params = params or {}

@@ -53,6 +53,7 @@ def test_hub_service_returns_twitch_and_epic_modules():
     status = HubService(twitch).get_status()
 
     assert status["name"] == "TDM Hub"
+    assert status["actions"] == ["update_all"]
     assert [module["id"] for module in status["modules"]] == [
         "twitch-drops",
         "free-games-epic",
@@ -149,6 +150,42 @@ def test_hub_service_runs_epic_actions():
     free_games.update_runner.assert_called_once_with()
     free_games.run_now.assert_called_once_with("main")
     free_games.stop_run.assert_called_once_with()
+
+
+def test_hub_service_runs_update_all_action():
+    free_games = SimpleNamespace(
+        update_runner=MagicMock(return_value=True),
+    )
+    hub = HubService(SimpleNamespace(free_games=free_games))
+
+    assert hub.run_hub_action("update_all") == {
+        "success": True,
+        "action": "update_all",
+        "results": [
+            {"success": True, "module_id": "free-games-epic", "action": "update"}
+        ],
+    }
+    free_games.update_runner.assert_called_once_with()
+
+
+def test_hub_service_reports_update_all_failures():
+    free_games = SimpleNamespace(
+        update_runner=MagicMock(return_value=False),
+    )
+    hub = HubService(SimpleNamespace(free_games=free_games))
+
+    result = hub.run_hub_action("update_all")
+
+    assert result["success"] is False
+    assert result["status_code"] == 409
+    assert result["detail"] == "One or more hub modules could not be updated"
+    assert result["results"] == [
+        {
+            "success": False,
+            "status_code": 409,
+            "detail": "Free games module is already running or updating",
+        }
+    ]
 
 
 def test_hub_service_rejects_invalid_action_requests():

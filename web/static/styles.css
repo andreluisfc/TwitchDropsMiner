@@ -345,6 +345,12 @@ header h1 {
     gap: 8px;
 }
 
+.hub-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+}
+
 .hub-panel .verify-result {
     margin-top: 10px;
 }

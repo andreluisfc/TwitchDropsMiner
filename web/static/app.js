@@ -2114,6 +2114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('verify-proxy-btn').addEventListener('click', verifyProxy);
     document.getElementById('reload-btn').addEventListener('click', reloadCampaigns);
     document.getElementById('telegram-resend-status-btn').addEventListener('click', resendTelegramStatusMessage);
+    document.getElementById('hub-update-all-btn').addEventListener('click', () => runHubAction('update_all'));
     document.getElementById('free-games-run-btn').addEventListener('click', () => runFreeGamesNow());
     document.getElementById('free-games-stop-btn').addEventListener('click', stopFreeGamesRun);
     document.getElementById('free-games-update-btn').addEventListener('click', updateFreeGamesRunner);
@@ -2397,6 +2398,40 @@ async function runHubModuleAction(moduleId, action) {
             resultDiv.className = 'verify-result error';
             resultDiv.textContent = error.message;
         }
+    }
+}
+
+async function runHubAction(action) {
+    const resultDiv = document.getElementById('hub-action-result');
+    const button = document.getElementById('hub-update-all-btn');
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'verify-result loading';
+        resultDiv.textContent = 'Running hub action...';
+    }
+    if (button && action === 'update_all') button.disabled = true;
+
+    try {
+        const response = await fetch(`/api/hub/actions/${encodeURIComponent(action)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'Hub action failed');
+        }
+        if (resultDiv) {
+            resultDiv.className = 'verify-result success';
+            resultDiv.textContent = 'Hub action started.';
+        }
+        fetchFreeGamesStatus();
+        fetchHubModules();
+    } catch (error) {
+        if (resultDiv) {
+            resultDiv.className = 'verify-result error';
+            resultDiv.textContent = error.message;
+        }
+        if (button && action === 'update_all') button.disabled = false;
     }
 }
 

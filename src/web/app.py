@@ -301,6 +301,14 @@ async def run_hub_module_action(module_id: str, action: str, request: HubActionR
     return _hub_action_response(twitch_client.hub.run_action(module_id, action, request.params))
 
 
+@app.post("/api/hub/actions/{action}")
+async def run_hub_action(action: str):
+    """Run a hub-level action."""
+    if not twitch_client:
+        raise HTTPException(status_code=503, detail="Twitch client not initialized")
+    return _hub_action_response(twitch_client.hub.run_hub_action(action))
+
+
 def _hub_action_response(result: dict[str, Any]) -> dict[str, Any]:
     if not result.get("success"):
         raise HTTPException(
