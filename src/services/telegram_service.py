@@ -349,7 +349,9 @@ class TelegramService:
             return ["Disabled."]
 
         lines = []
-        if status.get("running"):
+        if status.get("updating"):
+            lines.append("⬆️ Updating Epic module")
+        elif status.get("running"):
             active = status.get("active_account_id") or "all accounts"
             lines.append(f"🔄 Running now: {self._html(active)}")
         elif status.get("next_run_at"):

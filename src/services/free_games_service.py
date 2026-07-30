@@ -40,14 +40,19 @@ class FreeGamesService:
         self._twitch = twitch
         self._scheduler_task: asyncio.Task[None] | None = None
         self._run_task: asyncio.Task[None] | None = None
+        self._update_task: asyncio.Task[None] | None = None
         self._state: dict[str, Any] = json_load(
             FREE_GAMES_STATE_PATH,
             {
                 "running": False,
+                "updating": False,
                 "active_account_id": None,
                 "last_run_started_at": None,
                 "last_run_finished_at": None,
                 "last_run_success": None,
+                "last_update_started_at": None,
+                "last_update_finished_at": None,
+                "last_update_success": None,
                 "last_error": None,
                 "accounts": {},
             },
@@ -59,7 +64,7 @@ class FreeGamesService:
             self._scheduler_task = self._create_task(self._scheduler_loop())
 
     async def stop(self) -> None:
-        for task in (self._scheduler_task, self._run_task):
+        for task in (self._scheduler_task, self._run_task, self._update_task):
             if task is not None:
                 task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -78,10 +83,14 @@ class FreeGamesService:
             "image": self._image,
             "schedule_hours": self._schedule_hours,
             "running": bool(self._state.get("running")),
+            "updating": bool(self._state.get("updating")),
             "active_account_id": self._state.get("active_account_id"),
             "last_run_started_at": self._state.get("last_run_started_at"),
             "last_run_finished_at": self._state.get("last_run_finished_at"),
             "last_run_success": self._state.get("last_run_success"),
+            "last_update_started_at": self._state.get("last_update_started_at"),
+            "last_update_finished_at": self._state.get("last_update_finished_at"),
+            "last_update_success": self._state.get("last_update_success"),
             "last_error": self._state.get("last_error"),
             "next_run_at": self._next_run_at(),
             "accounts": [self._account_status(account) for account in self._accounts],
@@ -94,6 +103,14 @@ class FreeGamesService:
             return False
         self._run_task = self._create_task(self._run_accounts(account_id))
         return self._run_task is not None
+
+    def update_runner(self) -> bool:
+        if self._run_task is not None and not self._run_task.done():
+            return False
+        if self._update_task is not None and not self._update_task.done():
+            return False
+        self._update_task = self._create_task(self._update_runner())
+        return self._update_task is not None
 
     async def _scheduler_loop(self) -> None:
         while True:
@@ -142,6 +159,57 @@ class FreeGamesService:
                     "active_account_id": None,
                     "last_run_finished_at": self._now(),
                     "last_run_success": success,
+                }
+            )
+            self._save_state()
+            self._twitch.telegram.queue_status_update()
+
+    async def _update_runner(self) -> None:
+        self._state.update(
+            {
+                "updating": True,
+                "last_update_started_at": self._now(),
+                "last_update_finished_at": None,
+                "last_update_success": None,
+                "last_error": None,
+            }
+        )
+        self._save_state()
+        self._twitch.telegram.queue_status_update()
+
+        command: list[str] | None = None
+        if self._runner == "docker":
+            command = ["docker", "pull", self._image]
+        elif self._runner == "local":
+            repo_dir = str(self._twitch.settings.free_games_claimer_path or "").strip()
+            if repo_dir:
+                command = ["git", "-C", repo_dir, "pull", "--ff-only"]
+
+        success = False
+        try:
+            if command is None:
+                raise RuntimeError("Free games runner is not configured.")
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            output, _ = await process.communicate()
+            log_path = FREE_GAMES_DATA_DIR / "last-update.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text(output.decode(errors="replace")[-12000:], encoding="utf8")
+            success = process.returncode == 0
+            if not success:
+                self._state["last_error"] = f"Update exited with {process.returncode}"
+        except Exception as exc:
+            self._state["last_error"] = str(exc)
+            logger.warning("Free games module update failed", exc_info=True)
+        finally:
+            self._state.update(
+                {
+                    "updating": False,
+                    "last_update_finished_at": self._now(),
+                    "last_update_success": success,
                 }
             )
             self._save_state()

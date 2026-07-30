@@ -258,6 +258,18 @@ async def run_free_games(request: FreeGamesRunRequest):
     return {"success": True}
 
 
+@app.post("/api/free-games/update")
+async def update_free_games_runner():
+    """Update the configured free-games runner."""
+    if not twitch_client:
+        raise HTTPException(status_code=503, detail="Twitch client not initialized")
+    if not twitch_client.free_games.update_runner():
+        raise HTTPException(
+            status_code=409, detail="Free games module is already running or updating"
+        )
+    return {"success": True}
+
+
 @app.post("/api/settings/verify-proxy")
 async def verify_proxy(request: ProxyVerifyRequest):
     """Verify proxy connectivity"""

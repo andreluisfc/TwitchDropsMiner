@@ -2106,6 +2106,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('reload-btn').addEventListener('click', reloadCampaigns);
     document.getElementById('telegram-resend-status-btn').addEventListener('click', resendTelegramStatusMessage);
     document.getElementById('free-games-run-btn').addEventListener('click', () => runFreeGamesNow());
+    document.getElementById('free-games-update-btn').addEventListener('click', updateFreeGamesRunner);
     document.getElementById('free-games-add-account-btn').addEventListener('click', addFreeGamesAccount);
 
     [
@@ -2276,11 +2277,15 @@ function updateFreeGamesStatus(status) {
     state.freeGames = status || {};
     const container = document.getElementById('free-games-status');
     const runButton = document.getElementById('free-games-run-btn');
+    const updateButton = document.getElementById('free-games-update-btn');
     if (!container) return;
 
     container.innerHTML = '';
     if (runButton) {
-        runButton.disabled = Boolean(status?.running) || !status?.enabled;
+        runButton.disabled = Boolean(status?.running || status?.updating) || !status?.enabled;
+    }
+    if (updateButton) {
+        updateButton.disabled = Boolean(status?.running || status?.updating);
     }
 
     if (!status?.enabled) {
@@ -2290,6 +2295,9 @@ function updateFreeGamesStatus(status) {
 
     const summary = makeElement('div', { class: 'free-games-summary' }, '', el => {
         el.appendChild(makeElement('span', {}, status.running ? 'Running now' : 'Idle'));
+        if (status.updating) {
+            el.appendChild(makeElement('span', {}, 'Updating module'));
+        }
         if (status.active_account_id) {
             el.appendChild(makeElement('span', {}, `Account: ${status.active_account_id}`));
         }
@@ -2340,6 +2348,39 @@ function updateFreeGamesStatus(status) {
         grid.appendChild(card);
     });
     container.appendChild(grid);
+}
+
+async function updateFreeGamesRunner() {
+    const resultDiv = document.getElementById('free-games-action-result');
+    const button = document.getElementById('free-games-update-btn');
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'verify-result loading';
+        resultDiv.textContent = 'Updating Epic module...';
+    }
+    if (button) button.disabled = true;
+
+    try {
+        const response = await fetch('/api/free-games/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'Could not update Epic module');
+        }
+        if (resultDiv) {
+            resultDiv.className = 'verify-result success';
+            resultDiv.textContent = 'Epic module update started.';
+        }
+        fetchFreeGamesStatus();
+    } catch (error) {
+        if (resultDiv) {
+            resultDiv.className = 'verify-result error';
+            resultDiv.textContent = error.message;
+        }
+        if (button) button.disabled = false;
+    }
 }
 
 async function runFreeGamesNow(accountId = null) {
