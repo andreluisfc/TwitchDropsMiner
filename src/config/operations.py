@@ -9,7 +9,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # returns stream information for a particular channel
     "GetStreamInfo": GQLOperation(
         "VideoPlayerStreamInfoOverlayChannel",
-        "198492e0857f6aedead9665c81c5a06d67b25b58034649687124083ff288597d",
+        "a5f2e34d626a9f4f5c0204f910bab2194948a9502089be558bb6e779a9e1b3d2",
         variables={
             "channel": ...,  # channel login
         },
@@ -28,7 +28,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # can be used to claim a drop
     "ClaimDrop": GQLOperation(
         "DropsPage_ClaimDropRewards",
-        "a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930",
+        "2f884fa187b8fadb2a49db0adc033e636f7b6aaee6e76de1e2bba9a7baf0daf6",
         variables={
             "input": {
                 "dropInstanceID": ...,  # drop claim_id
@@ -38,7 +38,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # returns current state of points (balance, claim available) for a particular channel
     "ChannelPointsContext": GQLOperation(
         "ChannelPointsContext",
-        "374314de591e69925fce3ddc2bcf085796f56ebb8cad67a0daa3165c03adc345",
+        "9988086babc615a918a1e9a722ff41d98847acac822645209ac7379eecb27152",
         variables={
             "channelLogin": ...,  # channel login
         },
@@ -46,7 +46,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # returns all in-progress campaigns
     "Inventory": GQLOperation(
         "Inventory",
-        "d86775d0ef16a63a33ad52e80eaff963b2d5b72fada7c991504a57496e1d8e4b",
+        "e0765ebaa8e8eeb4043cc6dfeab3eac7f682ef5f724b81367e6e55c7aef2be4c",
         variables={
             "fetchRewardCampaigns": False,
         },
@@ -63,7 +63,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # returns all available campaigns
     "Campaigns": GQLOperation(
         "ViewerDropsDashboard",
-        "5a4da2ab3d5b47c9f9ce864e727b2cb346af1e3ea8b897fe8f704a97ff017619",
+        "c4d61d7b71d03b324914d3cf8ca0bc23fe25dacf54120cc954321b9704a3f4e2",
         variables={
             "fetchRewardCampaigns": False,
         },
@@ -71,7 +71,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # returns extended information about a particular campaign
     "CampaignDetails": GQLOperation(
         "DropCampaignDetails",
-        "039277bf98f3130929262cc7c6efd9c141ca3749cb6dca442fc8ead9a53f77c1",
+        "14b5e8a50777165cfc3971e1d93b4758613fe1c817d5542c398dce70b7a45c05",
         variables={
             "channelLogin": ...,  # user login
             "dropID": ...,  # campaign ID
@@ -80,7 +80,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
     # returns drops available for a particular channel
     "AvailableDrops": GQLOperation(
         "DropsHighlightService_AvailableDrops",
-        "9a62a09bce5b53e26e64a671e530bc599cb6aab1e5ba3cbd5d85966d3940716f",
+        "b19ee96a0e79e3f8281c4108bc4c7b3f232266db6f96fd04a339ab393673a075",
         variables={
             "channelID": ...,  # channel ID as a str
         },
