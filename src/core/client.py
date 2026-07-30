@@ -27,6 +27,7 @@ from src.models.campaign import DropsCampaign
 from src.models.channel import Channel
 from src.services.channel_service import ChannelService
 from src.services.free_games_service import FreeGamesService
+from src.services.hub_service import HubService
 from src.services.inventory_service import InventoryService
 from src.services.maintenance import MaintenanceService
 from src.services.message_handlers import MessageHandlerService
@@ -92,6 +93,7 @@ class Twitch:
         self._stream_selector: StreamSelector = StreamSelector()
         self.telegram: TelegramService = TelegramService(self)
         self.free_games: FreeGamesService = FreeGamesService(self)
+        self.hub: HubService = HubService(self)
 
     def _ensure_api_clients(self) -> None:
         """Ensure API clients are initialized (called after GUI is set)."""

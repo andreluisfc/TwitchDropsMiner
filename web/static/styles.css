@@ -270,6 +270,7 @@ header h1 {
 
 .free-games-panel {
     grid-column: 1 / -1;
+    grid-row: 5;
 }
 
 .free-games-status {
@@ -334,6 +335,62 @@ header h1 {
     grid-row: 2;
 }
 
+.hub-panel {
+    grid-column: 1 / -1;
+    grid-row: 3;
+}
+
+.hub-modules-list {
+    display: grid;
+    gap: 8px;
+}
+
+.hub-module-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: start;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.hub-module-row:last-child {
+    border-bottom: 0;
+}
+
+.hub-module-main {
+    min-width: 0;
+}
+
+.hub-module-title {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.hub-module-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    max-width: 420px;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.status-pill.active {
+    border-color: var(--success-color);
+    color: var(--success-color);
+}
+
 .channels-panel {
     grid-column: 2;
     grid-row: 2;
@@ -341,7 +398,7 @@ header h1 {
 
 .wanted-panel {
     grid-column: 1 / -1;
-    grid-row: 3;
+    grid-row: 4;
 }
 
 /* Login */
@@ -1676,6 +1733,8 @@ header h1 {
     .progress-panel,
     .console-panel,
     .channels-panel,
+    .hub-panel,
+    .wanted-panel,
     .free-games-panel {
         grid-column: 1;
         grid-row: auto;

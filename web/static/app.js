@@ -8,6 +8,7 @@ const state = {
     campaigns: {},
     settings: {},
     freeGames: {},
+    hub: {},
     currentDrop: null,
     countdownTimer: null,  // Track the active countdown timer
     translations: {}  // Store current translations
@@ -159,10 +160,16 @@ socket.on('initial_state', (data) => {
     } else {
         fetchFreeGamesStatus();
     }
+    if (data.hub) {
+        updateHubModules(data.hub);
+    } else {
+        fetchHubModules();
+    }
 });
 
 socket.on('status_update', (data) => {
     updateStatus(data.status);
+    fetchHubModules();
 });
 
 socket.on('console_output', (data) => {
@@ -2268,9 +2275,58 @@ async function fetchFreeGamesStatus() {
         const response = await fetch('/api/free-games/status');
         if (!response.ok) throw new Error('Could not load free-games status');
         updateFreeGamesStatus(await response.json());
+        fetchHubModules();
     } catch (error) {
         console.warn('Could not fetch free-games status:', error);
     }
+}
+
+async function fetchHubModules() {
+    try {
+        const response = await fetch('/api/hub/modules');
+        if (!response.ok) throw new Error('Could not load hub modules');
+        updateHubModules(await response.json());
+    } catch (error) {
+        console.warn('Could not fetch hub modules:', error);
+    }
+}
+
+function updateHubModules(hub) {
+    state.hub = hub || {};
+    const container = document.getElementById('hub-modules-list');
+    if (!container) return;
+
+    const modules = state.hub.modules || [];
+    if (!modules.length) {
+        container.replaceChildren(makeElement('p', { class: 'empty-message-small' }, 'No hub modules registered.'));
+        return;
+    }
+
+    container.replaceChildren(...modules.map(module => makeElement('div', { class: 'hub-module-row' }, '', row => {
+        row.appendChild(makeElement('div', { class: 'hub-module-main' }, '', main => {
+            main.appendChild(makeElement('div', { class: 'hub-module-title' }, module.name || module.id));
+            main.appendChild(makeElement('div', { class: 'muted-text' }, module.status || 'Idle'));
+            if (module.upstream) {
+                main.appendChild(makeElement('a', { href: module.upstream, target: '_blank', rel: 'noopener noreferrer' }, 'Upstream'));
+            }
+        }));
+        row.appendChild(makeElement('div', { class: 'hub-module-meta' }, '', meta => {
+            meta.appendChild(makeElement('span', { class: module.enabled ? 'status-pill active' : 'status-pill' }, module.enabled ? 'Enabled' : 'Disabled'));
+            if (module.running) {
+                meta.appendChild(makeElement('span', { class: 'status-pill active' }, 'Running'));
+            }
+            if (module.updating) {
+                meta.appendChild(makeElement('span', { class: 'status-pill active' }, 'Updating'));
+            }
+            Object.entries(module.metrics || {}).forEach(([key, value]) => {
+                meta.appendChild(makeElement('span', { class: 'status-pill' }, `${formatMetricName(key)}: ${value}`));
+            });
+        }));
+    })));
+}
+
+function formatMetricName(key) {
+    return String(key).replace(/_/g, ' ');
 }
 
 function updateFreeGamesStatus(status) {

@@ -258,6 +258,14 @@ async def get_free_games_status():
     return twitch_client.free_games.get_status()
 
 
+@app.get("/api/hub/modules")
+async def get_hub_modules():
+    """Get normalized hub module catalog."""
+    if not twitch_client:
+        raise HTTPException(status_code=503, detail="Twitch client not initialized")
+    return twitch_client.hub.get_status()
+
+
 @app.post("/api/free-games/run")
 async def run_free_games(request: FreeGamesRunRequest):
     """Run the Epic free-games claimer now."""
@@ -565,6 +573,7 @@ async def connect(sid, environ):
                 "current_drop": gui_manager.progress.get_current_drop(),
                 "wanted_items": gui_manager.get_wanted_game_tree(),
                 "free_games": twitch_client.free_games.get_status(),
+                "hub": twitch_client.hub.get_status(),
             },
             room=sid,
         )
