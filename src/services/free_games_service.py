@@ -542,9 +542,7 @@ class FreeGamesService:
         return datetime.fromisoformat(next_run) <= datetime.now().astimezone()
 
     def _next_run_at(self) -> str | None:
-        reference_at = self._state.get("last_run_finished_at") or self._state.get(
-            "last_run_started_at"
-        )
+        reference_at = self._last_attempt_at()
         if not reference_at:
             return None
         try:
@@ -552,6 +550,30 @@ class FreeGamesService:
         except ValueError:
             return None
         return (reference + timedelta(hours=self._schedule_hours)).isoformat(timespec="seconds")
+
+    def _last_attempt_at(self) -> str | None:
+        timestamps = [
+            self._state.get("last_run_finished_at"),
+            self._state.get("last_run_started_at"),
+        ]
+        for account_state in self._state.get("accounts", {}).values():
+            if isinstance(account_state, dict):
+                timestamps.extend(
+                    [
+                        account_state.get("last_run_finished_at"),
+                        account_state.get("last_run_started_at"),
+                    ]
+                )
+        valid_timestamps: list[str] = []
+        for timestamp in timestamps:
+            if not timestamp:
+                continue
+            try:
+                datetime.fromisoformat(str(timestamp))
+            except ValueError:
+                continue
+            valid_timestamps.append(str(timestamp))
+        return max(valid_timestamps) if valid_timestamps else None
 
     async def _recover_interrupted_state(self) -> None:
         if not self._state.get("running") and not self._state.get("updating"):

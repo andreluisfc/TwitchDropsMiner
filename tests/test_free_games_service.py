@@ -202,6 +202,27 @@ def test_free_games_next_run_uses_started_at_when_run_was_interrupted():
     assert service._next_run_at() == "2026-07-31T10:00:00+00:00"
 
 
+def test_free_games_next_run_uses_account_attempt_when_global_state_is_incomplete():
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[{"id": "main"}],
+            )
+        )
+    )
+    service._state["last_run_finished_at"] = None
+    service._state["last_run_started_at"] = None
+    service._state["accounts"] = {
+        "main": {"last_run_finished_at": "2026-07-30T10:00:00+00:00"}
+    }
+
+    assert service._next_run_at() == "2026-07-31T10:00:00+00:00"
+
+
 @pytest.mark.asyncio
 async def test_free_games_run_accounts_marks_global_failure_when_account_fails(monkeypatch):
     monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
