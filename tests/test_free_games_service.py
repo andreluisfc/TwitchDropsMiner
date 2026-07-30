@@ -305,6 +305,9 @@ async def test_free_games_recovers_interrupted_state(monkeypatch):
     assert service._state["running"] is False
     assert service._state["active_account_id"] is None
     assert service._state["last_error"] == "Previous Epic run was interrupted."
+    assert service._state["last_run_success"] is False
+    assert service._state["last_run_finished_at"] is not None
+    assert not service._due_for_scheduled_run()
 
 
 @pytest.mark.asyncio

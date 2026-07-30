@@ -555,6 +555,8 @@ class FreeGamesService:
             ):
                 return
             self._state["last_error"] = "Previous Epic run was interrupted."
+            self._state["last_run_finished_at"] = self._now()
+            self._state["last_run_success"] = False
         elif self._state.get("updating"):
             self._state["last_error"] = "Previous Epic module update was interrupted."
         self._state["running"] = False
