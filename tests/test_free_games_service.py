@@ -264,6 +264,31 @@ def test_free_games_run_now_requires_enabled_account(monkeypatch):
     twitch.telegram.queue_status_update.assert_called_once()
 
 
+def test_free_games_stop_run_requests_active_container_stop():
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[{"id": "main"}],
+            )
+        )
+    )
+    service._state.update({"running": True, "active_account_id": "main"})
+
+    def fake_create_task(coro):
+        coro.close()
+        return SimpleNamespace(done=lambda: False)
+
+    service._create_task = MagicMock(side_effect=fake_create_task)
+
+    assert service.stop_run()
+    assert service._stop_requested
+    service._create_task.assert_called_once()
+
+
 def test_free_games_next_run_uses_started_at_when_run_was_interrupted():
     service = FreeGamesService(
         make_twitch(

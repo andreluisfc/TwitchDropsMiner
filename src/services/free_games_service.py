@@ -44,6 +44,8 @@ class FreeGamesService:
         self._scheduler_task: asyncio.Task[None] | None = None
         self._run_task: asyncio.Task[None] | None = None
         self._update_task: asyncio.Task[None] | None = None
+        self._stop_task: asyncio.Task[None] | None = None
+        self._stop_requested = False
         self._state = self._load_state()
 
     def _load_state(self) -> dict[str, Any]:
@@ -80,13 +82,14 @@ class FreeGamesService:
             self._scheduler_task = self._create_task(self._scheduler_loop())
 
     async def stop(self) -> None:
-        for task in (self._scheduler_task, self._run_task, self._update_task):
+        for task in (self._scheduler_task, self._run_task, self._update_task, self._stop_task):
             if task is not None:
                 task.cancel()
                 with suppress(asyncio.CancelledError):
                     await task
         self._scheduler_task = None
         self._run_task = None
+        self._stop_task = None
 
     def on_settings_changed(self) -> None:
         self._save_state()
@@ -99,7 +102,7 @@ class FreeGamesService:
                 "name": "Epic Freebies",
                 "upstream": "https://github.com/vogler/free-games-claimer",
                 "update_strategy": self._runner,
-                "actions": ["run", "run_account", "update"],
+                "actions": ["run", "run_account", "stop", "update"],
             },
             "source": self._source_info(),
             "enabled": self._enabled,
@@ -143,6 +146,17 @@ class FreeGamesService:
         self._update_task = self._create_task(self._update_runner())
         return self._update_task is not None
 
+    def stop_run(self) -> bool:
+        if not self._state.get("running"):
+            return False
+        if self._stop_task is not None and not self._stop_task.done():
+            return False
+        self._stop_requested = True
+        self._stop_task = self._create_task(
+            self._stop_active_run(str(self._state.get("active_account_id") or ""))
+        )
+        return self._stop_task is not None
+
     async def _scheduler_loop(self) -> None:
         while True:
             if self._state.get("running") and (
@@ -178,6 +192,7 @@ class FreeGamesService:
 
         success = True
         failed_accounts: list[str] = []
+        self._stop_requested = False
         try:
             for account in accounts:
                 self._state["active_account_id"] = account["id"]
@@ -186,8 +201,14 @@ class FreeGamesService:
                 success = success and account_success
                 if not account_success:
                     failed_accounts.append(str(account.get("name") or account["id"]))
+                if self._stop_requested:
+                    break
             if failed_accounts:
-                self._state["last_error"] = self._format_failed_accounts(failed_accounts)
+                self._state["last_error"] = (
+                    "Epic run stopped by user."
+                    if self._stop_requested
+                    else self._format_failed_accounts(failed_accounts)
+                )
         except Exception as exc:
             success = False
             self._state["last_error"] = str(exc)
@@ -203,6 +224,7 @@ class FreeGamesService:
             )
             self._save_state()
             self._twitch.telegram.queue_status_update()
+            self._stop_requested = False
 
     async def _update_runner(self) -> None:
         self._state.update(
@@ -315,7 +337,7 @@ class FreeGamesService:
                 logger.warning("Timed out while stopping Epic runner process")
         text = output.decode(errors="replace")[-12000:]
         log_path.write_text(text, encoding="utf8")
-        success = process.returncode == 0 and not timed_out
+        success = process.returncode == 0 and not timed_out and not self._stop_requested
 
         account_state.update(
             {
@@ -323,7 +345,7 @@ class FreeGamesService:
                 "last_run_success": success,
                 "last_error": None
                 if success
-                else self._format_run_error(process.returncode, timed_out),
+                else self._format_run_error(process.returncode, timed_out, self._stop_requested),
             }
         )
         self._save_state()
@@ -669,7 +691,15 @@ class FreeGamesService:
         if process.returncode is None:
             process.kill()
 
-    def _format_run_error(self, returncode: int | str | None, timed_out: bool) -> str:
+    async def _stop_active_run(self, account_id: str) -> None:
+        if self._runner == "docker" and account_id:
+            await self._docker_output("docker", "rm", "-f", self._docker_container_name(account_id))
+
+    def _format_run_error(
+        self, returncode: int | str | None, timed_out: bool, stopped: bool = False
+    ) -> str:
+        if stopped:
+            return "Stopped by user."
         if timed_out:
             return f"Timed out after {self._run_timeout_minutes} minute(s)."
         return f"Exited with {returncode}"
@@ -715,7 +745,9 @@ class FreeGamesService:
                     "last_run_success": success,
                     "last_error": None
                     if success
-                    else self._format_run_error(returncode_text or wait[0], timed_out),
+                    else self._format_run_error(
+                        returncode_text or wait[0], timed_out, self._stop_requested
+                    ),
                 }
             )
             self._state.update(
@@ -726,7 +758,9 @@ class FreeGamesService:
                     "last_run_success": success,
                     "last_error": None
                     if success
-                    else self._format_run_error(returncode_text or wait[0], timed_out),
+                    else self._format_run_error(
+                        returncode_text or wait[0], timed_out, self._stop_requested
+                    ),
                 }
             )
             self._save_state()
@@ -753,6 +787,7 @@ class FreeGamesService:
             logger.warning("Adopted Epic runner monitoring failed", exc_info=True)
         finally:
             self._twitch.telegram.queue_status_update()
+            self._stop_requested = False
 
     def _save_state(self) -> None:
         json_save(FREE_GAMES_STATE_PATH, self._state, sort=True)

@@ -29,6 +29,7 @@ TELEGRAM_STATE_PATH = DATA_DIR / "telegram_state.json"
 TELEGRAM_TOKEN_PLACEHOLDER = "********"
 RECENT_CLAIMED_LIMIT = 12
 CALLBACK_FREE_GAMES_RUN = "free_games:run"
+CALLBACK_FREE_GAMES_STOP = "free_games:stop"
 CALLBACK_FREE_GAMES_UPDATE = "free_games:update"
 CALLBACK_STATUS_REFRESH = "status:refresh"
 CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX = "fg:r:"
@@ -212,6 +213,10 @@ class TelegramService:
                 logger.debug("Could not build Telegram free-games keyboard", exc_info=True)
             else:
                 if status.get("enabled"):
+                    if status.get("running"):
+                        keyboard.append(
+                            [{"text": "⏹ Stop Epic", "callback_data": CALLBACK_FREE_GAMES_STOP}]
+                        )
                     account_buttons = []
                     for index, account in enumerate((status.get("accounts") or [])[:4]):
                         if account.get("enabled") is False:
@@ -519,6 +524,17 @@ class TelegramService:
                 self.queue_status_update(immediate=True)
             else:
                 await self._answer_callback(callback_id, "Epic run could not be started.")
+            return
+
+        if data == CALLBACK_FREE_GAMES_STOP:
+            status = free_games.get_status()
+            if not status.get("running"):
+                await self._answer_callback(callback_id, "Epic run is not active.")
+            elif free_games.stop_run():
+                await self._answer_callback(callback_id, "Epic stop requested.")
+                self.queue_status_update(immediate=True)
+            else:
+                await self._answer_callback(callback_id, "Epic run could not be stopped.")
             return
 
         if data == CALLBACK_FREE_GAMES_UPDATE:

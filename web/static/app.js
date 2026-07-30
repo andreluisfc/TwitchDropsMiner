@@ -2115,6 +2115,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('reload-btn').addEventListener('click', reloadCampaigns);
     document.getElementById('telegram-resend-status-btn').addEventListener('click', resendTelegramStatusMessage);
     document.getElementById('free-games-run-btn').addEventListener('click', () => runFreeGamesNow());
+    document.getElementById('free-games-stop-btn').addEventListener('click', stopFreeGamesRun);
     document.getElementById('free-games-update-btn').addEventListener('click', updateFreeGamesRunner);
     document.getElementById('free-games-add-account-btn').addEventListener('click', addFreeGamesAccount);
 
@@ -2361,6 +2362,7 @@ function getHubModuleActions(module) {
         const enabledAccounts = Number(module.metrics?.enabled_accounts || 0);
         return [
             { id: 'run', label: 'Run', disabled: busy || !module.enabled || enabledAccounts === 0 },
+            { id: 'stop', label: 'Stop', disabled: !module.running },
             { id: 'update', label: 'Update', disabled: busy },
         ];
     }
@@ -2402,12 +2404,16 @@ function updateFreeGamesStatus(status) {
     state.freeGames = status || {};
     const container = document.getElementById('free-games-status');
     const runButton = document.getElementById('free-games-run-btn');
+    const stopButton = document.getElementById('free-games-stop-btn');
     const updateButton = document.getElementById('free-games-update-btn');
     if (!container) return;
 
     container.innerHTML = '';
     if (runButton) {
         runButton.disabled = Boolean(status?.running || status?.updating) || !status?.enabled;
+    }
+    if (stopButton) {
+        stopButton.disabled = !status?.running;
     }
     if (updateButton) {
         updateButton.disabled = Boolean(status?.running || status?.updating);
@@ -2523,6 +2529,41 @@ async function updateFreeGamesRunner() {
             resultDiv.textContent = 'Epic module update started.';
         }
         fetchFreeGamesStatus();
+    } catch (error) {
+        if (resultDiv) {
+            resultDiv.className = 'verify-result error';
+            resultDiv.textContent = error.message;
+        }
+        if (button) button.disabled = false;
+    }
+}
+
+async function stopFreeGamesRun() {
+    const resultDiv = document.getElementById('free-games-action-result');
+    const button = document.getElementById('free-games-stop-btn');
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'verify-result loading';
+        resultDiv.textContent = 'Stopping Epic run...';
+    }
+    if (button) button.disabled = true;
+
+    try {
+        const response = await fetch('/api/hub/modules/free-games-epic/actions/stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ params: {} })
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'Could not stop Epic run');
+        }
+        if (resultDiv) {
+            resultDiv.className = 'verify-result success';
+            resultDiv.textContent = 'Epic stop requested.';
+        }
+        fetchFreeGamesStatus();
+        fetchHubModules();
     } catch (error) {
         if (resultDiv) {
             resultDiv.className = 'verify-result error';

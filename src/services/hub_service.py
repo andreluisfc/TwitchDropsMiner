@@ -58,6 +58,22 @@ class HubService:
 
     def _run_epic_action(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
         free_games = self._twitch.free_games
+        if action == "stop":
+            status = free_games.get_status()
+            if not status.get("running"):
+                return {
+                    "success": False,
+                    "status_code": 409,
+                    "detail": "Free games module is not running",
+                }
+            if not free_games.stop_run():
+                return {
+                    "success": False,
+                    "status_code": 409,
+                    "detail": "Free games module could not be stopped",
+                }
+            return {"success": True, "module_id": "free-games-epic", "action": action}
+
         if action == "update":
             if not free_games.update_runner():
                 return {
@@ -156,7 +172,7 @@ class HubService:
             "status": self._free_games_label(status),
             "upstream": metadata.get("upstream", "https://github.com/vogler/free-games-claimer"),
             "update_strategy": metadata.get("update_strategy") or status.get("runner"),
-            "actions": metadata.get("actions", ["run", "run_account", "update"]),
+            "actions": metadata.get("actions", ["run", "run_account", "stop", "update"]),
             "metrics": {
                 "accounts": len(accounts),
                 "enabled_accounts": sum(1 for account in accounts if account.get("enabled", True)),

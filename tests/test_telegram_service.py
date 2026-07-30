@@ -368,6 +368,36 @@ def test_telegram_status_keyboard_includes_epic_account_buttons():
     )
 
 
+def test_telegram_status_keyboard_includes_epic_stop_button_when_running():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(
+            return_value={
+                "enabled": True,
+                "running": True,
+                "accounts": [{"id": "main", "name": "Main"}],
+            }
+        )
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        free_games=free_games,
+    )
+    markup = TelegramService(twitch)._status_reply_markup()
+
+    assert [{"text": "⏹ Stop Epic", "callback_data": "free_games:stop"}] in markup[
+        "inline_keyboard"
+    ]
+
+
 @pytest.mark.asyncio
 async def test_telegram_callback_runs_specific_epic_account():
     free_games = SimpleNamespace(
@@ -415,6 +445,51 @@ async def test_telegram_callback_runs_specific_epic_account():
         "answerCallbackQuery",
         callback_query_id="callback-account",
         text="Epic run started for Main.",
+    )
+
+
+@pytest.mark.asyncio
+async def test_telegram_callback_stops_epic_module():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(return_value={"enabled": True, "running": True}),
+        run_now=MagicMock(),
+        stop_run=MagicMock(return_value=True),
+        update_runner=MagicMock(),
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        free_games=free_games,
+    )
+    service = TelegramService(twitch)
+    service._session = SimpleNamespace(closed=False)
+    service._api = AsyncMock()
+    service.queue_status_update = MagicMock()
+
+    await service._handle_update(
+        {
+            "callback_query": {
+                "id": "callback-stop",
+                "data": "free_games:stop",
+                "message": {"chat": {"id": 42}},
+            }
+        }
+    )
+
+    free_games.stop_run.assert_called_once_with()
+    service.queue_status_update.assert_called_once_with(immediate=True)
+    service._api.assert_awaited_once_with(
+        "answerCallbackQuery",
+        callback_query_id="callback-stop",
+        text="Epic stop requested.",
     )
 
 

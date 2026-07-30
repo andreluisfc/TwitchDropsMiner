@@ -121,6 +121,7 @@ def test_hub_service_runs_twitch_reload_action():
 def test_hub_service_runs_epic_actions():
     free_games = SimpleNamespace(
         update_runner=MagicMock(return_value=True),
+        stop_run=MagicMock(return_value=True),
         get_status=MagicMock(return_value={"enabled": True}),
         account_exists=MagicMock(return_value=True),
         has_enabled_accounts=MagicMock(return_value=True),
@@ -139,13 +140,21 @@ def test_hub_service_runs_epic_actions():
         "module_id": "free-games-epic",
         "action": "run_account",
     }
+    free_games.get_status.return_value = {"enabled": True, "running": True}
+    assert hub.run_action("free-games-epic", "stop") == {
+        "success": True,
+        "module_id": "free-games-epic",
+        "action": "stop",
+    }
     free_games.update_runner.assert_called_once_with()
     free_games.run_now.assert_called_once_with("main")
+    free_games.stop_run.assert_called_once_with()
 
 
 def test_hub_service_rejects_invalid_action_requests():
     free_games = SimpleNamespace(
         update_runner=MagicMock(return_value=False),
+        stop_run=MagicMock(return_value=False),
         get_status=MagicMock(return_value={"enabled": True}),
         account_exists=MagicMock(return_value=False),
         has_enabled_accounts=MagicMock(return_value=False),
@@ -163,4 +172,10 @@ def test_hub_service_rejects_invalid_action_requests():
         "success": False,
         "status_code": 404,
         "detail": "Epic account not found",
+    }
+    free_games.get_status.return_value = {"enabled": True, "running": False}
+    assert hub.run_action("free-games-epic", "stop") == {
+        "success": False,
+        "status_code": 409,
+        "detail": "Free games module is not running",
     }
