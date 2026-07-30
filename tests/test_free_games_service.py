@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.services.free_games_service import SECRET_PLACEHOLDER, FreeGamesService
 from src.web.managers.settings import SettingsManager
 
@@ -178,6 +180,75 @@ def test_free_games_run_now_requires_enabled_account(monkeypatch):
     assert not service.run_now()
     assert service.get_status()["last_error"] == "No enabled Epic accounts configured."
     twitch.telegram.queue_status_update.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_free_games_prepare_docker_container_removes_stale_container(monkeypatch):
+    calls = []
+
+    class FakeProcess:
+        def __init__(self, returncode, output):
+            self.returncode = returncode
+            self._output = output
+
+        async def communicate(self):
+            return self._output, None
+
+    async def fake_exec(*command, **kwargs):
+        calls.append(command)
+        if command[:2] == ("docker", "inspect"):
+            return FakeProcess(0, b"false\n")
+        return FakeProcess(0, b"removed\n")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[],
+            )
+        )
+    )
+
+    assert await service._prepare_docker_container("main", {})
+    assert calls == [
+        ("docker", "inspect", "-f", "{{.State.Running}}", "fgc-epic-main"),
+        ("docker", "rm", "-f", "fgc-epic-main"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_free_games_prepare_docker_container_refuses_active_container(monkeypatch):
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self):
+            return b"true\n", None
+
+    async def fake_exec(*command, **kwargs):
+        return FakeProcess()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[],
+            )
+        )
+    )
+    account_state = {}
+
+    assert not await service._prepare_docker_container("main", account_state)
+    assert account_state["last_run_success"] is False
+    assert account_state["last_error"] == "Epic runner container is already active."
 
 
 def test_settings_manager_masks_and_preserves_free_games_secrets(monkeypatch):

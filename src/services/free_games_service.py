@@ -250,6 +250,11 @@ class FreeGamesService:
             self._save_state()
             return
 
+        if self._runner == "docker" and not await self._prepare_docker_container(
+            account_id, account_state
+        ):
+            return
+
         logger.info("Running free games claimer for Epic account %s", account.get("name"))
         env = os.environ.copy()
         env.update(self._account_env(account, account_dir))
@@ -312,6 +317,54 @@ class FreeGamesService:
                 command.extend(["-e", key])
         command.extend([self._image, "node", "epic-games"])
         return command
+
+    async def _prepare_docker_container(
+        self, account_id: str, account_state: dict[str, Any]
+    ) -> bool:
+        container_name = self._docker_container_name(account_id)
+        inspect = await self._docker_output(
+            "docker",
+            "inspect",
+            "-f",
+            "{{.State.Running}}",
+            container_name,
+        )
+        if inspect[0] != 0:
+            return True
+
+        if inspect[1].strip().lower() == "true":
+            account_state.update(
+                {
+                    "last_run_finished_at": self._now(),
+                    "last_run_success": False,
+                    "last_error": "Epic runner container is already active.",
+                }
+            )
+            self._save_state()
+            return False
+
+        remove = await self._docker_output("docker", "rm", "-f", container_name)
+        if remove[0] == 0:
+            return True
+
+        account_state.update(
+            {
+                "last_run_finished_at": self._now(),
+                "last_run_success": False,
+                "last_error": "Could not remove stale Epic runner container.",
+            }
+        )
+        self._save_state()
+        return False
+
+    async def _docker_output(self, *command: str) -> tuple[int, str]:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        output, _ = await process.communicate()
+        return process.returncode, output.decode(errors="replace")
 
     def _account_env(self, account: dict[str, Any], account_dir: Path) -> dict[str, str]:
         env = {
