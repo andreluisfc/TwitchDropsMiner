@@ -10,6 +10,7 @@ from __future__ import annotations
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
+from src.config import State
 from src.version import __version__
 
 
@@ -33,6 +34,79 @@ class HubService:
             ],
         }
 
+    def run_action(self, module_id: str, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        params = params or {}
+        if module_id == "twitch-drops":
+            return self._run_twitch_action(action)
+        if module_id == "free-games-epic":
+            return self._run_epic_action(action, params)
+        return {
+            "success": False,
+            "status_code": 404,
+            "detail": f"Hub module not found: {module_id}",
+        }
+
+    def _run_twitch_action(self, action: str) -> dict[str, Any]:
+        if action != "reload":
+            return {
+                "success": False,
+                "status_code": 404,
+                "detail": f"Unsupported Twitch Drops action: {action}",
+            }
+        self._twitch.change_state(State.INVENTORY_FETCH)
+        return {"success": True, "module_id": "twitch-drops", "action": action}
+
+    def _run_epic_action(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
+        free_games = self._twitch.free_games
+        if action == "update":
+            if not free_games.update_runner():
+                return {
+                    "success": False,
+                    "status_code": 409,
+                    "detail": "Free games module is already running or updating",
+                }
+            return {"success": True, "module_id": "free-games-epic", "action": action}
+
+        if action not in {"run", "run_account"}:
+            return {
+                "success": False,
+                "status_code": 404,
+                "detail": f"Unsupported Epic Freebies action: {action}",
+            }
+
+        account_id = str(params.get("account_id") or "").strip() or None
+        if action == "run_account" and not account_id:
+            return {
+                "success": False,
+                "status_code": 400,
+                "detail": "account_id is required",
+            }
+        if not free_games.get_status().get("enabled"):
+            return {
+                "success": False,
+                "status_code": 400,
+                "detail": "Free games module is disabled",
+            }
+        if account_id and not free_games.account_exists(account_id):
+            return {
+                "success": False,
+                "status_code": 404,
+                "detail": "Epic account not found",
+            }
+        if not free_games.has_enabled_accounts(account_id):
+            return {
+                "success": False,
+                "status_code": 400,
+                "detail": "No enabled Epic accounts configured",
+            }
+        if not free_games.run_now(account_id):
+            return {
+                "success": False,
+                "status_code": 409,
+                "detail": "Free games module is already running",
+            }
+        return {"success": True, "module_id": "free-games-epic", "action": action}
+
     def _twitch_drops_module(self) -> dict[str, Any]:
         login = {}
         status = str(getattr(self._twitch, "_state", "idle"))
@@ -55,7 +129,7 @@ class HubService:
             "status": status,
             "upstream": "https://github.com/rangermix/TwitchDropsMiner",
             "update_strategy": "git-fork",
-            "actions": ["watch", "claim", "prioritize"],
+            "actions": ["reload", "watch", "claim", "prioritize"],
             "metrics": {
                 "channels": len(getattr(self._twitch, "channels", {})),
                 "campaigns": len(getattr(self._twitch, "inventory", [])),

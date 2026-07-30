@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 if TYPE_CHECKING:
@@ -109,6 +109,10 @@ class ProxyVerifyRequest(BaseModel):
 
 class FreeGamesRunRequest(BaseModel):
     account_id: str | None = None
+
+
+class HubActionRequest(BaseModel):
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 # ==================== REST API Endpoints ====================
@@ -271,15 +275,13 @@ async def run_free_games(request: FreeGamesRunRequest):
     """Run the Epic free-games claimer now."""
     if not twitch_client:
         raise HTTPException(status_code=503, detail="Twitch client not initialized")
-    if not twitch_client.free_games.get_status().get("enabled"):
-        raise HTTPException(status_code=400, detail="Free games module is disabled")
-    if request.account_id and not twitch_client.free_games.account_exists(request.account_id):
-        raise HTTPException(status_code=404, detail="Epic account not found")
-    if not twitch_client.free_games.has_enabled_accounts(request.account_id):
-        raise HTTPException(status_code=400, detail="No enabled Epic accounts configured")
-    if not twitch_client.free_games.run_now(request.account_id):
-        raise HTTPException(status_code=409, detail="Free games module is already running")
-    return {"success": True}
+    action = "run_account" if request.account_id else "run"
+    result = twitch_client.hub.run_action(
+        "free-games-epic",
+        action,
+        {"account_id": request.account_id} if request.account_id else {},
+    )
+    return _hub_action_response(result)
 
 
 @app.post("/api/free-games/update")
@@ -287,11 +289,24 @@ async def update_free_games_runner():
     """Update the configured free-games runner."""
     if not twitch_client:
         raise HTTPException(status_code=503, detail="Twitch client not initialized")
-    if not twitch_client.free_games.update_runner():
+    return _hub_action_response(twitch_client.hub.run_action("free-games-epic", "update"))
+
+
+@app.post("/api/hub/modules/{module_id}/actions/{action}")
+async def run_hub_module_action(module_id: str, action: str, request: HubActionRequest):
+    """Run a normalized action for a hub module."""
+    if not twitch_client:
+        raise HTTPException(status_code=503, detail="Twitch client not initialized")
+    return _hub_action_response(twitch_client.hub.run_action(module_id, action, request.params))
+
+
+def _hub_action_response(result: dict[str, Any]) -> dict[str, Any]:
+    if not result.get("success"):
         raise HTTPException(
-            status_code=409, detail="Free games module is already running or updating"
+            status_code=int(result.get("status_code") or 400),
+            detail=str(result.get("detail") or "Hub action failed"),
         )
-    return {"success": True}
+    return result
 
 
 @app.api_route(

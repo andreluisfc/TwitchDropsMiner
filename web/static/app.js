@@ -2321,12 +2321,64 @@ function updateHubModules(hub) {
             Object.entries(module.metrics || {}).forEach(([key, value]) => {
                 meta.appendChild(makeElement('span', { class: 'status-pill' }, `${formatMetricName(key)}: ${value}`));
             });
+            getHubModuleActions(module).forEach(action => {
+                meta.appendChild(makeElement('button', { type: 'button', class: 'small-btn' }, action.label, button => {
+                    button.disabled = action.disabled;
+                    button.addEventListener('click', () => runHubModuleAction(module.id, action.id));
+                }));
+            });
         }));
     })));
 }
 
 function formatMetricName(key) {
     return String(key).replace(/_/g, ' ');
+}
+
+function getHubModuleActions(module) {
+    if (module.id === 'twitch-drops') {
+        return [{ id: 'reload', label: 'Reload', disabled: false }];
+    }
+    if (module.id === 'free-games-epic') {
+        const busy = Boolean(module.running || module.updating);
+        const enabledAccounts = Number(module.metrics?.enabled_accounts || 0);
+        return [
+            { id: 'run', label: 'Run', disabled: busy || !module.enabled || enabledAccounts === 0 },
+            { id: 'update', label: 'Update', disabled: busy },
+        ];
+    }
+    return [];
+}
+
+async function runHubModuleAction(moduleId, action) {
+    const resultDiv = document.getElementById('hub-action-result');
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'verify-result loading';
+        resultDiv.textContent = 'Running module action...';
+    }
+    try {
+        const response = await fetch(`/api/hub/modules/${encodeURIComponent(moduleId)}/actions/${encodeURIComponent(action)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ params: {} })
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'Module action failed');
+        }
+        if (resultDiv) {
+            resultDiv.className = 'verify-result success';
+            resultDiv.textContent = 'Module action started.';
+        }
+        fetchFreeGamesStatus();
+        fetchHubModules();
+    } catch (error) {
+        if (resultDiv) {
+            resultDiv.className = 'verify-result error';
+            resultDiv.textContent = error.message;
+        }
+    }
 }
 
 function updateFreeGamesStatus(status) {

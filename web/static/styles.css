@@ -345,6 +345,10 @@ header h1 {
     gap: 8px;
 }
 
+.hub-panel .verify-result {
+    margin-top: 10px;
+}
+
 .hub-module-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -371,6 +375,7 @@ header h1 {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
+    align-items: center;
     gap: 6px;
     max-width: 420px;
 }

@@ -1,5 +1,7 @@
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+from src.config import State
 from src.services.hub_service import HubService
 
 
@@ -87,3 +89,68 @@ def test_hub_service_labels_epic_setup_state():
     epic_module = HubService(twitch).get_status()["modules"][1]
 
     assert epic_module["status"] == "No accounts configured"
+
+
+def test_hub_service_runs_twitch_reload_action():
+    twitch = SimpleNamespace(
+        change_state=MagicMock(),
+        watching_channel=SimpleNamespace(get_with_default=lambda default: None),
+        get_manual_mode_info=lambda: {"active": False},
+        channels={},
+        inventory=[],
+        wanted_games=[],
+        free_games=SimpleNamespace(get_status=lambda: {"module": {}, "accounts": []}),
+    )
+
+    result = HubService(twitch).run_action("twitch-drops", "reload")
+
+    assert result == {"success": True, "module_id": "twitch-drops", "action": "reload"}
+    twitch.change_state.assert_called_once_with(State.INVENTORY_FETCH)
+
+
+def test_hub_service_runs_epic_actions():
+    free_games = SimpleNamespace(
+        update_runner=MagicMock(return_value=True),
+        get_status=MagicMock(return_value={"enabled": True}),
+        account_exists=MagicMock(return_value=True),
+        has_enabled_accounts=MagicMock(return_value=True),
+        run_now=MagicMock(return_value=True),
+    )
+    twitch = SimpleNamespace(free_games=free_games)
+    hub = HubService(twitch)
+
+    assert hub.run_action("free-games-epic", "update") == {
+        "success": True,
+        "module_id": "free-games-epic",
+        "action": "update",
+    }
+    assert hub.run_action("free-games-epic", "run_account", {"account_id": "main"}) == {
+        "success": True,
+        "module_id": "free-games-epic",
+        "action": "run_account",
+    }
+    free_games.update_runner.assert_called_once_with()
+    free_games.run_now.assert_called_once_with("main")
+
+
+def test_hub_service_rejects_invalid_action_requests():
+    free_games = SimpleNamespace(
+        update_runner=MagicMock(return_value=False),
+        get_status=MagicMock(return_value={"enabled": True}),
+        account_exists=MagicMock(return_value=False),
+        has_enabled_accounts=MagicMock(return_value=False),
+        run_now=MagicMock(return_value=False),
+    )
+    hub = HubService(SimpleNamespace(free_games=free_games))
+
+    assert hub.run_action("missing", "run")["status_code"] == 404
+    assert hub.run_action("free-games-epic", "run_account") == {
+        "success": False,
+        "status_code": 400,
+        "detail": "account_id is required",
+    }
+    assert hub.run_action("free-games-epic", "run_account", {"account_id": "missing"}) == {
+        "success": False,
+        "status_code": 404,
+        "detail": "Epic account not found",
+    }
