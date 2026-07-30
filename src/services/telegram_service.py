@@ -234,6 +234,9 @@ class TelegramService:
                 "🏆 <b>Recently claimed</b>",
                 *self._format_claimed_lines(),
                 "",
+                "🎮 <b>Epic freebies</b>",
+                *self._format_free_games_lines(),
+                "",
                 "🧭 <b>Next loot queue</b>",
                 *queue_lines,
             ]
@@ -331,6 +334,56 @@ class TelegramService:
         except ValueError:
             return self._html(value)
         return self._html(claimed_at.astimezone().strftime("%d/%m %H:%M"))
+
+    def _format_free_games_lines(self, account_limit: int = 4, game_limit: int = 3) -> list[str]:
+        free_games = getattr(self._twitch, "free_games", None)
+        if free_games is None:
+            return ["Module unavailable."]
+        try:
+            status = free_games.get_status()
+        except Exception:
+            logger.debug("Could not build Telegram free-games status", exc_info=True)
+            return ["Module status unavailable."]
+
+        if not status.get("enabled"):
+            return ["Disabled."]
+
+        lines = []
+        if status.get("running"):
+            active = status.get("active_account_id") or "all accounts"
+            lines.append(f"🔄 Running now: {self._html(active)}")
+        elif status.get("next_run_at"):
+            lines.append(f"⏭ Next run: {self._html(self._format_datetime(status['next_run_at']))}")
+
+        accounts = status.get("accounts") or []
+        if not accounts:
+            lines.append("No Epic accounts configured.")
+            return lines
+
+        for account in accounts[:account_limit]:
+            icon = "✅" if account.get("last_run_success") else "⚠️"
+            if account.get("last_run_success") is None:
+                icon = "⏳"
+            lines.append(f"{icon} <b>{self._html(account.get('name') or account.get('id'))}</b>")
+            claimed_games = account.get("claimed_games") or []
+            if claimed_games:
+                for game in claimed_games[:game_limit]:
+                    title = game.get("title") or "Unknown game"
+                    url = game.get("url") or ""
+                    game_link = self._game_campaign_link(title, url)
+                    lines.append(f"  • 🛍 {game_link}")
+            elif account.get("last_error"):
+                lines.append(f"  • {self._html(account['last_error'])}")
+            else:
+                lines.append("  • No claimed games recorded yet.")
+        return lines
+
+    def _format_datetime(self, value: object) -> str:
+        try:
+            stamp = datetime.fromisoformat(str(value))
+        except ValueError:
+            return str(value)
+        return stamp.astimezone().strftime("%d/%m %H:%M")
 
     def _save_status_state(self, message_id: int | None) -> None:
         self._state["status_message_id"] = message_id

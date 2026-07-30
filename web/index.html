@@ -109,6 +109,17 @@
                         <p class="empty-message-small">No wanted drops queued...</p>
                     </div>
                 </section>
+
+                <section class="panel free-games-panel">
+                    <h2>Epic Freebies</h2>
+                    <div id="free-games-status" class="free-games-status">
+                        <p class="empty-message-small">Loading Epic module...</p>
+                    </div>
+                    <div class="free-games-actions">
+                        <button id="free-games-run-btn" class="secondary-btn" type="button">Run Epic now</button>
+                        <div id="free-games-action-result" class="verify-result" style="display: none;"></div>
+                    </div>
+                </section>
             </div>
         </div>
 
@@ -259,6 +270,40 @@
                             <input type="checkbox" id="telegram-notify-errors" checked />
                             <span>Errors</span>
                         </label>
+                    </div>
+                </section>
+
+                <section class="settings-section">
+                    <h2>Epic Freebies</h2>
+                    <div class="free-games-settings">
+                        <label class="setting-toggle">
+                            <input type="checkbox" id="free-games-enabled"> Enable Epic free games module
+                        </label>
+
+                        <div class="settings-field-grid">
+                            <label for="free-games-runner">Runner:</label>
+                            <select id="free-games-runner">
+                                <option value="docker">Docker</option>
+                                <option value="local">Local checkout</option>
+                            </select>
+
+                            <label for="free-games-image">Docker image:</label>
+                            <input type="text" id="free-games-image"
+                                placeholder="ghcr.io/vogler/free-games-claimer:latest">
+
+                            <label for="free-games-claimer-path">Local checkout path:</label>
+                            <input type="text" id="free-games-claimer-path"
+                                placeholder="/opt/tdm/modules/free-games-claimer">
+
+                            <label for="free-games-schedule-hours">Schedule every hours:</label>
+                            <input type="number" id="free-games-schedule-hours" min="1" max="168" value="24">
+                        </div>
+
+                        <div class="free-games-accounts-header">
+                            <h3>Epic Accounts</h3>
+                            <button id="free-games-add-account-btn" class="small-btn" type="button">Add account</button>
+                        </div>
+                        <div id="free-games-accounts-list" class="free-games-accounts-list"></div>
                     </div>
                 </section>
 

@@ -30,6 +30,16 @@ class TelegramNotifications(TypedDict):
     errors: bool
 
 
+class FreeGamesAccount(TypedDict, total=False):
+    id: str
+    name: str
+    email: str
+    password: str
+    otpkey: str
+    parental_pin: str
+    enabled: bool
+
+
 default_settings = {
     "connection_quality": 1,
     "dark_mode": False,
@@ -68,6 +78,12 @@ default_settings = {
         "link_updates": True,
         "errors": True,
     },
+    "free_games_enabled": False,
+    "free_games_runner": "docker",
+    "free_games_image": "ghcr.io/vogler/free-games-claimer:latest",
+    "free_games_claimer_path": "",
+    "free_games_schedule_hours": 24,
+    "free_games_accounts": [],
 }
 
 
@@ -88,6 +104,12 @@ class Settings:
     telegram_chat_id: str
     telegram_panel_url: str
     telegram_notifications: TelegramNotifications
+    free_games_enabled: bool
+    free_games_runner: str
+    free_games_image: str
+    free_games_claimer_path: str
+    free_games_schedule_hours: int
+    free_games_accounts: list[FreeGamesAccount]
 
     def __init__(self):
         self.load()

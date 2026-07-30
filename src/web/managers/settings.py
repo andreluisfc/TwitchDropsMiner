@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.i18n.translator import _
 from src.models.game import Game
+from src.services.free_games_service import SECRET_PLACEHOLDER
 from src.services.telegram_service import TELEGRAM_TOKEN_PLACEHOLDER
 
 
@@ -61,6 +62,11 @@ class SettingsManager:
             settings["telegram_chat_id"] = env_chat_id
         if not settings.get("telegram_panel_url") and env_panel_url:
             settings["telegram_panel_url"] = env_panel_url
+        settings["free_games_accounts"] = [
+            self._mask_free_games_account(account)
+            for account in settings.get("free_games_accounts", [])
+            if isinstance(account, dict)
+        ]
         return settings
 
     def get_languages(self) -> dict[str, Any]:
@@ -150,6 +156,27 @@ class SettingsManager:
             should_trigger_update |= self.check_and_update_setting(
                 "telegram_notifications", settings_data.get("telegram_notifications"), True
             )
+        should_trigger_update |= self.check_and_update_setting(
+            "free_games_enabled", settings_data.get("free_games_enabled"), True
+        )
+        should_trigger_update |= self.check_and_update_setting(
+            "free_games_runner", settings_data.get("free_games_runner"), True
+        )
+        should_trigger_update |= self.check_and_update_setting(
+            "free_games_image", settings_data.get("free_games_image"), True
+        )
+        should_trigger_update |= self.check_and_update_setting(
+            "free_games_claimer_path", settings_data.get("free_games_claimer_path"), True
+        )
+        should_trigger_update |= self.check_and_update_setting(
+            "free_games_schedule_hours", settings_data.get("free_games_schedule_hours"), True
+        )
+        if "free_games_accounts" in settings_data:
+            accounts = self._merge_free_games_accounts(settings_data.get("free_games_accounts"))
+            if getattr(self._settings, "free_games_accounts", None) != accounts:
+                self._settings.free_games_accounts = accounts
+                self._log_change(f"Setting changed: free_games_accounts = {len(accounts)} account(s)")
+                should_trigger_update = True
 
         self._settings.save()
         asyncio.create_task(self._broadcaster.emit("settings_updated", self.get_settings()))
@@ -175,6 +202,44 @@ class SettingsManager:
         _.set_language(language)
         # Notify clients that translations need to be reloaded
         asyncio.create_task(self._broadcaster.emit("language_changed", {"language": language}))
+
+    def _mask_free_games_account(self, account: dict[str, Any]) -> dict[str, Any]:
+        masked = account.copy()
+        for key in ("password", "otpkey", "parental_pin"):
+            if masked.get(key):
+                masked[key] = SECRET_PLACEHOLDER
+        return masked
+
+    def _merge_free_games_accounts(self, incoming: Any) -> list[dict[str, Any]]:
+        if not isinstance(incoming, list):
+            return []
+        existing = {
+            str(account.get("id")): account
+            for account in getattr(self._settings, "free_games_accounts", [])
+            if isinstance(account, dict) and account.get("id")
+        }
+        accounts: list[dict[str, Any]] = []
+        for raw_account in incoming:
+            if not isinstance(raw_account, dict):
+                continue
+            account_id = str(raw_account.get("id") or raw_account.get("email") or "").strip()
+            if not account_id:
+                continue
+            current = existing.get(account_id, {})
+            account = {
+                "id": account_id,
+                "name": str(raw_account.get("name") or raw_account.get("email") or account_id).strip(),
+                "email": str(raw_account.get("email") or "").strip(),
+                "enabled": bool(raw_account.get("enabled", True)),
+                "password": str(raw_account.get("password") or "").strip(),
+                "otpkey": str(raw_account.get("otpkey") or "").strip(),
+                "parental_pin": str(raw_account.get("parental_pin") or "").strip(),
+            }
+            for secret_key in ("password", "otpkey", "parental_pin"):
+                if account[secret_key] == SECRET_PLACEHOLDER:
+                    account[secret_key] = str(current.get(secret_key) or "")
+            accounts.append(account)
+        return accounts
 
     def set_games(self, games: set[Game]):
         """Update the list of available games for settings panel.

@@ -7,6 +7,7 @@ const state = {
     channels: {},
     campaigns: {},
     settings: {},
+    freeGames: {},
     currentDrop: null,
     countdownTimer: null,  // Track the active countdown timer
     translations: {}  // Store current translations
@@ -152,6 +153,11 @@ socket.on('initial_state', (data) => {
 
     if (data.wanted_items) {
         renderWantedItems(data.wanted_items);
+    }
+    if (data.free_games) {
+        updateFreeGamesStatus(data.free_games);
+    } else {
+        fetchFreeGamesStatus();
     }
 });
 
@@ -1077,6 +1083,13 @@ function updateSettingsUI(settings) {
     document.getElementById('telegram-notify-link-updates').checked = telegramNotifications.link_updates !== false;
     document.getElementById('telegram-notify-errors').checked = telegramNotifications.errors !== false;
 
+    document.getElementById('free-games-enabled').checked = settings.free_games_enabled || false;
+    document.getElementById('free-games-runner').value = settings.free_games_runner || 'docker';
+    document.getElementById('free-games-image').value = settings.free_games_image || '';
+    document.getElementById('free-games-claimer-path').value = settings.free_games_claimer_path || '';
+    document.getElementById('free-games-schedule-hours').value = settings.free_games_schedule_hours || 24;
+    renderFreeGamesAccounts(settings.free_games_accounts || []);
+
     const proxyIndicator = document.getElementById('proxy-indicator');
     if (proxyIndicator) {
         proxyIndicator.style.display = proxyUrl ? 'inline-flex' : 'none';
@@ -1590,7 +1603,13 @@ async function saveSettings() {
             status_message: document.getElementById('telegram-notify-status-message').checked,
             link_updates: document.getElementById('telegram-notify-link-updates').checked,
             errors: document.getElementById('telegram-notify-errors').checked
-        }
+        },
+        free_games_enabled: document.getElementById('free-games-enabled').checked,
+        free_games_runner: document.getElementById('free-games-runner').value,
+        free_games_image: document.getElementById('free-games-image').value,
+        free_games_claimer_path: document.getElementById('free-games-claimer-path').value,
+        free_games_schedule_hours: parseInt(document.getElementById('free-games-schedule-hours').value) || 24,
+        free_games_accounts: collectFreeGamesAccounts()
     };
 
     try {
@@ -2086,6 +2105,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('verify-proxy-btn').addEventListener('click', verifyProxy);
     document.getElementById('reload-btn').addEventListener('click', reloadCampaigns);
     document.getElementById('telegram-resend-status-btn').addEventListener('click', resendTelegramStatusMessage);
+    document.getElementById('free-games-run-btn').addEventListener('click', () => runFreeGamesNow());
+    document.getElementById('free-games-add-account-btn').addEventListener('click', addFreeGamesAccount);
 
     [
         'telegram-enabled',
@@ -2097,6 +2118,11 @@ document.addEventListener('DOMContentLoaded', () => {
         'telegram-notify-status-message',
         'telegram-notify-link-updates',
         'telegram-notify-errors',
+        'free-games-enabled',
+        'free-games-runner',
+        'free-games-image',
+        'free-games-claimer-path',
+        'free-games-schedule-hours',
     ].forEach((id) => {
         const element = document.getElementById(id);
         if (element) element.addEventListener('change', saveSettings);
@@ -2157,6 +2183,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Fetch and apply translations for the current language
     fetchAndApplyTranslations();
+    fetchFreeGamesStatus();
+    setInterval(fetchFreeGamesStatus, 60000);
 
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
@@ -2230,6 +2258,186 @@ function renderWantedItems(tree) {
         groupEl.appendChild(campaignListEl);
         container.appendChild(groupEl);
     });
+}
+
+// ==================== Free Games Module ====================
+
+async function fetchFreeGamesStatus() {
+    try {
+        const response = await fetch('/api/free-games/status');
+        if (!response.ok) throw new Error('Could not load free-games status');
+        updateFreeGamesStatus(await response.json());
+    } catch (error) {
+        console.warn('Could not fetch free-games status:', error);
+    }
+}
+
+function updateFreeGamesStatus(status) {
+    state.freeGames = status || {};
+    const container = document.getElementById('free-games-status');
+    const runButton = document.getElementById('free-games-run-btn');
+    if (!container) return;
+
+    container.innerHTML = '';
+    if (runButton) {
+        runButton.disabled = Boolean(status?.running) || !status?.enabled;
+    }
+
+    if (!status?.enabled) {
+        container.replaceChildren(makeElement('p', { class: 'empty-message-small' }, 'Epic module is disabled.'));
+        return;
+    }
+
+    const summary = makeElement('div', { class: 'free-games-summary' }, '', el => {
+        el.appendChild(makeElement('span', {}, status.running ? 'Running now' : 'Idle'));
+        if (status.active_account_id) {
+            el.appendChild(makeElement('span', {}, `Account: ${status.active_account_id}`));
+        }
+        if (status.next_run_at) {
+            el.appendChild(makeElement('span', {}, `Next: ${formatLocalDateTime(status.next_run_at)}`));
+        }
+        if (status.last_error) {
+            el.appendChild(makeElement('span', { class: 'error-text' }, status.last_error));
+        }
+    });
+    container.appendChild(summary);
+
+    const accounts = status.accounts || [];
+    if (!accounts.length) {
+        container.appendChild(makeElement('p', { class: 'empty-message-small' }, 'No Epic accounts configured.'));
+        return;
+    }
+
+    const grid = makeElement('div', { class: 'free-games-account-grid' });
+    accounts.forEach(account => {
+        const card = makeElement('div', { class: 'free-games-account-card' }, '', el => {
+            el.appendChild(makeElement('h3', {}, account.name || account.email || account.id));
+            const lastRun = account.last_run_finished_at
+                ? `Last run: ${formatLocalDateTime(account.last_run_finished_at)}`
+                : 'Last run: never';
+            el.appendChild(makeElement('div', { class: 'muted-text' }, lastRun));
+            if (account.last_error) {
+                el.appendChild(makeElement('div', { class: 'error-text' }, account.last_error));
+            }
+            const games = account.claimed_games || [];
+            if (games.length) {
+                const list = makeElement('ul', { class: 'free-games-game-list' });
+                games.slice(0, 4).forEach(game => {
+                    const item = makeElement('li', {}, '', li => {
+                        if (game.url) {
+                            li.appendChild(makeElement('a', { href: game.url, target: '_blank', rel: 'noopener noreferrer' }, game.title || game.id));
+                        } else {
+                            li.appendChild(document.createTextNode(game.title || game.id));
+                        }
+                    });
+                    list.appendChild(item);
+                });
+                el.appendChild(list);
+            } else {
+                el.appendChild(makeElement('div', { class: 'muted-text' }, 'No claimed games recorded yet.'));
+            }
+        });
+        grid.appendChild(card);
+    });
+    container.appendChild(grid);
+}
+
+async function runFreeGamesNow(accountId = null) {
+    const resultDiv = document.getElementById('free-games-action-result');
+    const button = document.getElementById('free-games-run-btn');
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'verify-result loading';
+        resultDiv.textContent = 'Starting Epic run...';
+    }
+    if (button) button.disabled = true;
+
+    try {
+        const response = await fetch('/api/free-games/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: accountId })
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'Could not start Epic run');
+        }
+        if (resultDiv) {
+            resultDiv.className = 'verify-result success';
+            resultDiv.textContent = 'Epic run started.';
+        }
+        fetchFreeGamesStatus();
+    } catch (error) {
+        if (resultDiv) {
+            resultDiv.className = 'verify-result error';
+            resultDiv.textContent = error.message;
+        }
+        if (button) button.disabled = false;
+    }
+}
+
+function renderFreeGamesAccounts(accounts = []) {
+    const container = document.getElementById('free-games-accounts-list');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!accounts.length) {
+        container.appendChild(makeElement('p', { class: 'empty-message-small' }, 'No Epic accounts configured.'));
+        return;
+    }
+
+    accounts.forEach(account => {
+        const row = makeElement('div', { class: 'free-games-account-form', 'data-account-id': account.id || '' }, '', el => {
+            el.appendChild(makeElement('input', { type: 'text', class: 'free-games-account-name', placeholder: 'Name', value: account.name || '' }));
+            el.appendChild(makeElement('input', { type: 'email', class: 'free-games-account-email', placeholder: 'Epic email', value: account.email || '' }));
+            el.appendChild(makeElement('input', { type: 'password', class: 'free-games-account-password', placeholder: 'Password', value: account.password || '' }));
+            el.appendChild(makeElement('input', { type: 'password', class: 'free-games-account-otpkey', placeholder: 'OTP key', value: account.otpkey || '' }));
+            el.appendChild(makeElement('input', { type: 'password', class: 'free-games-account-parental-pin', placeholder: 'Parental PIN', value: account.parental_pin || '' }));
+            el.appendChild(makeElement('label', { class: 'filter-checkbox' }, '', label => {
+                label.appendChild(makeElement('input', { type: 'checkbox', class: 'free-games-account-enabled' }, '', input => {
+                    input.checked = account.enabled !== false;
+                }));
+                label.appendChild(makeElement('span', {}, 'Enabled'));
+            }));
+            el.appendChild(makeElement('button', { type: 'button', class: 'small-btn remove-account-btn' }, 'Remove', button => {
+                button.addEventListener('click', () => {
+                    row.remove();
+                    saveSettings();
+                });
+            }));
+            el.querySelectorAll('input').forEach(input => input.addEventListener('change', saveSettings));
+        });
+        container.appendChild(row);
+    });
+}
+
+function collectFreeGamesAccounts() {
+    return Array.from(document.querySelectorAll('.free-games-account-form')).map(row => {
+        const email = row.querySelector('.free-games-account-email')?.value.trim() || '';
+        const id = row.getAttribute('data-account-id') || email;
+        return {
+            id,
+            name: row.querySelector('.free-games-account-name')?.value.trim() || email,
+            email,
+            password: row.querySelector('.free-games-account-password')?.value.trim() || '',
+            otpkey: row.querySelector('.free-games-account-otpkey')?.value.trim() || '',
+            parental_pin: row.querySelector('.free-games-account-parental-pin')?.value.trim() || '',
+            enabled: row.querySelector('.free-games-account-enabled')?.checked !== false,
+        };
+    }).filter(account => account.id || account.email);
+}
+
+function addFreeGamesAccount() {
+    const accounts = collectFreeGamesAccounts();
+    accounts.push({ id: '', name: '', email: '', password: '', otpkey: '', parental_pin: '', enabled: true });
+    state.settings.free_games_accounts = accounts;
+    renderFreeGamesAccounts(accounts);
+}
+
+function formatLocalDateTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString();
 }
 
 // ==================== DOM Utilities ====================

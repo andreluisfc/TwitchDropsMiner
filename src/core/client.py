@@ -26,6 +26,7 @@ from src.i18n import _
 from src.models.campaign import DropsCampaign
 from src.models.channel import Channel
 from src.services.channel_service import ChannelService
+from src.services.free_games_service import FreeGamesService
 from src.services.inventory_service import InventoryService
 from src.services.maintenance import MaintenanceService
 from src.services.message_handlers import MessageHandlerService
@@ -90,6 +91,7 @@ class Twitch:
         self._watch_service: WatchService = WatchService(self)
         self._stream_selector: StreamSelector = StreamSelector()
         self.telegram: TelegramService = TelegramService(self)
+        self.free_games: FreeGamesService = FreeGamesService(self)
 
     def _ensure_api_clients(self) -> None:
         """Ensure API clients are initialized (called after GUI is set)."""
@@ -128,6 +130,7 @@ class Twitch:
             self._mnt_task.cancel()
             self._mnt_task = None
         # stop websocket and close HTTP session
+        await self.free_games.stop()
         await self.telegram.stop()
         await self.websocket.stop(clear_topics=True)
         if self._http_client is not None:

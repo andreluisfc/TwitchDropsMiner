@@ -59,6 +59,7 @@ class WebGUIManager:
 
         # Callback to trigger game update when relevant settings change
         def on_settings_change() -> None:
+            self._twitch.free_games.on_settings_changed()
             self._twitch.telegram.on_settings_changed()
             self._twitch.change_state(State.GAMES_UPDATE)
 

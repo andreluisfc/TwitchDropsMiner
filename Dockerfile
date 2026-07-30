@@ -25,6 +25,8 @@ ENV PYTHONUNBUFFERED=1 \
 # Set working directory
 WORKDIR /app
 
+RUN apk add --no-cache docker-cli
+
 # Copy project metadata and install dependencies
 COPY pyproject.toml .
 

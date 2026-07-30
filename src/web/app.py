@@ -83,10 +83,20 @@ class SettingsUpdate(BaseModel):
     telegram_chat_id: str | None = None
     telegram_panel_url: str | None = None
     telegram_notifications: dict[str, bool] | None = None
+    free_games_enabled: bool | None = None
+    free_games_runner: str | None = None
+    free_games_image: str | None = None
+    free_games_claimer_path: str | None = None
+    free_games_schedule_hours: int | None = None
+    free_games_accounts: list[dict] | None = None
 
 
 class ProxyVerifyRequest(BaseModel):
     proxy: str
+
+
+class FreeGamesRunRequest(BaseModel):
+    account_id: str | None = None
 
 
 # ==================== REST API Endpoints ====================
@@ -225,6 +235,26 @@ async def resend_telegram_status():
     success = await twitch_client.telegram.resend_status_message()
     if not success:
         raise HTTPException(status_code=400, detail="Telegram bot is not enabled or configured")
+    return {"success": True}
+
+
+@app.get("/api/free-games/status")
+async def get_free_games_status():
+    """Get free-games module status."""
+    if not twitch_client:
+        raise HTTPException(status_code=503, detail="Twitch client not initialized")
+    return twitch_client.free_games.get_status()
+
+
+@app.post("/api/free-games/run")
+async def run_free_games(request: FreeGamesRunRequest):
+    """Run the Epic free-games claimer now."""
+    if not twitch_client:
+        raise HTTPException(status_code=503, detail="Twitch client not initialized")
+    if not twitch_client.free_games.get_status().get("enabled"):
+        raise HTTPException(status_code=400, detail="Free games module is disabled")
+    if not twitch_client.free_games.run_now(request.account_id):
+        raise HTTPException(status_code=409, detail="Free games module is already running")
     return {"success": True}
 
 
@@ -380,6 +410,7 @@ async def connect(sid, environ):
                 "manual_mode": twitch_client.get_manual_mode_info(),
                 "current_drop": gui_manager.progress.get_current_drop(),
                 "wanted_items": gui_manager.get_wanted_game_tree(),
+                "free_games": twitch_client.free_games.get_status(),
             },
             room=sid,
         )
