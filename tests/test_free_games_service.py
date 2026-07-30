@@ -84,6 +84,49 @@ def test_free_games_status_exposes_module_metadata_and_account_lookup():
     assert not service.account_exists("missing")
 
 
+def test_free_games_state_loader_preserves_dynamic_account_ids(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        state_path = Path(temp_dir) / "free_games_state.json"
+        state_path.write_text(
+            json.dumps(
+                {
+                    "running": False,
+                    "updating": False,
+                    "active_account_id": None,
+                    "last_run_started_at": "2026-07-30T10:00:00+00:00",
+                    "last_run_finished_at": "2026-07-30T10:05:00+00:00",
+                    "last_run_success": False,
+                    "last_error": "Failed Epic accounts: main",
+                    "accounts": {
+                        "main": {
+                            "last_run_finished_at": "2026-07-30T10:05:00+00:00",
+                            "last_run_success": False,
+                            "last_error": "Exited with 1",
+                        }
+                    },
+                }
+            ),
+            encoding="utf8",
+        )
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_STATE_PATH", state_path)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main"}],
+                )
+            )
+        )
+
+    status = service.get_status()
+
+    assert status["last_run_finished_at"] == "2026-07-30T10:05:00+00:00"
+    assert status["accounts"][0]["last_error"] == "Exited with 1"
+
+
 def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypatch):
     monkeypatch.setenv("HOST_DATA_DIR", "/opt/tdm/data")
     settings = SimpleNamespace(

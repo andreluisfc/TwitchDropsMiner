@@ -44,23 +44,34 @@ class FreeGamesService:
         self._scheduler_task: asyncio.Task[None] | None = None
         self._run_task: asyncio.Task[None] | None = None
         self._update_task: asyncio.Task[None] | None = None
-        self._state: dict[str, Any] = json_load(
-            FREE_GAMES_STATE_PATH,
-            {
-                "running": False,
-                "updating": False,
-                "active_account_id": None,
-                "last_run_started_at": None,
-                "last_run_finished_at": None,
-                "last_run_success": None,
-                "last_update_started_at": None,
-                "last_update_finished_at": None,
-                "last_update_success": None,
-                "last_error": None,
-                "accounts": {},
-            },
-            merge=True,
-        )
+        self._state = self._load_state()
+
+    def _load_state(self) -> dict[str, Any]:
+        defaults = self._default_state()
+        loaded = json_load(FREE_GAMES_STATE_PATH, defaults, merge=False)
+        state = defaults.copy()
+        if isinstance(loaded, dict):
+            for key in defaults:
+                if key in loaded:
+                    state[key] = loaded[key]
+        if not isinstance(state.get("accounts"), dict):
+            state["accounts"] = {}
+        return state
+
+    def _default_state(self) -> dict[str, Any]:
+        return {
+            "running": False,
+            "updating": False,
+            "active_account_id": None,
+            "last_run_started_at": None,
+            "last_run_finished_at": None,
+            "last_run_success": None,
+            "last_update_started_at": None,
+            "last_update_finished_at": None,
+            "last_update_success": None,
+            "last_error": None,
+            "accounts": {},
+        }
 
     async def start(self) -> None:
         await self._recover_interrupted_state()
