@@ -446,6 +446,10 @@ class TelegramService:
                 lines.append(f"  • {self._html(account['last_error'])}")
             else:
                 lines.append("  • No claimed games recorded yet.")
+            account_automation = account.get("automation") or {}
+            if account_automation.get("blocked_reason"):
+                reason = str(account_automation["blocked_reason"]).replace("_", " ")
+                lines.append(f"  • ⏸ Automation blocked: {self._html(reason)}")
         return lines
 
     def _format_datetime(self, value: object) -> str:

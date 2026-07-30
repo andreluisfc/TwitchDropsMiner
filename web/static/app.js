@@ -2606,6 +2606,12 @@ function updateFreeGamesStatus(status) {
             if (account.enabled === false) {
                 el.appendChild(makeElement('div', { class: 'muted-text' }, 'Disabled'));
             }
+            const accountAutomation = account.automation || {};
+            if (accountAutomation.eligible === true) {
+                el.appendChild(makeElement('div', { class: 'muted-text' }, 'Scheduled for automatic runs'));
+            } else if (accountAutomation.blocked_reason) {
+                el.appendChild(makeElement('div', { class: 'muted-text' }, `Automation blocked: ${formatMetricName(accountAutomation.blocked_reason)}`));
+            }
             if (account.attention?.required && account.attention.message) {
                 el.appendChild(makeElement('div', { class: 'error-text' }, account.attention.message));
                 el.appendChild(makeElement('button', { type: 'button', class: 'small-btn' }, 'Clear attention', button => {

@@ -528,6 +528,7 @@ class FreeGamesService:
         account_state = self._state.get("accounts", {}).get(account_id, {})
         claims = self._read_epic_claims(account_id)
         attention = self._account_attention_info(account_id)
+        automation = self._account_automation_info(account, attention)
         return {
             "id": account_id,
             "name": account.get("name") or account.get("email") or account_id,
@@ -539,6 +540,7 @@ class FreeGamesService:
             "last_error": account_state.get("last_error"),
             "attention_cleared_at": account_state.get("attention_cleared_at"),
             "attention": attention,
+            "automation": automation,
             "logs": {
                 "last_run": self._log_info(self._account_run_log_path(account_id)),
             },
@@ -660,6 +662,15 @@ class FreeGamesService:
             "message": None,
             "account_id": account_id,
         }
+
+    def _account_automation_info(
+        self, account: dict[str, Any], attention: dict[str, Any]
+    ) -> dict[str, Any]:
+        if account.get("enabled") is False:
+            return {"eligible": False, "blocked_reason": "disabled"}
+        if attention.get("required"):
+            return {"eligible": False, "blocked_reason": "attention_required"}
+        return {"eligible": True, "blocked_reason": None}
 
     def _classify_attention(self, text: str, account_id: str | None = None) -> dict[str, Any]:
         lower_text = text.lower()

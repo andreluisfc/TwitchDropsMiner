@@ -185,6 +185,10 @@ def test_telegram_free_games_lines_include_attention_message():
                             "required": True,
                             "message": "Epic captcha required. Start a manual run and use Browser to solve it.",
                         },
+                        "automation": {
+                            "eligible": False,
+                            "blocked_reason": "attention_required",
+                        },
                     }
                 ],
             }
@@ -209,6 +213,7 @@ def test_telegram_free_games_lines_include_attention_message():
     assert "🚨 Epic captcha required. Start a manual run and use Browser to solve it." in lines
     assert "⏸ Automatic Epic runs paused until manual attention is resolved." in lines
     assert "🚨 <b>Main</b>" in lines
+    assert "  • ⏸ Automation blocked: attention required" in lines
 
 
 def test_telegram_drop_claimed_updates_status_without_separate_message(monkeypatch):

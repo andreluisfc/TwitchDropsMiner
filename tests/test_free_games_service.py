@@ -334,6 +334,10 @@ def test_free_games_status_marks_automation_paused_when_all_accounts_need_attent
     }
     assert status["next_run_at"] is None
     assert status["accounts"][0]["attention"]["reason"] == "captcha_required"
+    assert status["accounts"][0]["automation"] == {
+        "eligible": False,
+        "blocked_reason": "attention_required",
+    }
     assert not due
 
 
@@ -369,6 +373,10 @@ def test_free_games_clear_attention_resumes_scheduling_without_deleting_log(monk
     assert status["attention"]["required"] is False
     assert status["accounts"][0]["attention"]["required"] is False
     assert status["accounts"][0]["attention_cleared_at"]
+    assert status["accounts"][0]["automation"] == {
+        "eligible": True,
+        "blocked_reason": None,
+    }
     assert status["automation"] == {
         "scheduled_accounts": 1,
         "paused": False,
