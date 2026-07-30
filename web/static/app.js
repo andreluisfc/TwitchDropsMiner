@@ -2318,6 +2318,9 @@ function updateHubModules(hub) {
             if (source?.version) {
                 main.appendChild(makeElement('div', { class: 'muted-text' }, `Version: ${source.version}`));
             }
+            if (source?.image) {
+                main.appendChild(makeElement('div', { class: 'muted-text' }, `Image: ${source.image}`));
+            }
             if (source?.revision) {
                 const label = `Revision: ${shortRevision(source.revision)}`;
                 if (source.revision_url) {
@@ -2554,6 +2557,9 @@ function updateFreeGamesStatus(status) {
             } else {
                 el.appendChild(makeElement('span', {}, label));
             }
+        }
+        if (status.source?.image) {
+            el.appendChild(makeElement('span', {}, `Image: ${status.source.image}`));
         }
         const latestRunLog = formatLogInfo(status.logs?.latest_run, 'Run log');
         if (latestRunLog) {

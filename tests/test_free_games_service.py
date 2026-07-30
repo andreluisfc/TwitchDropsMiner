@@ -128,6 +128,64 @@ def test_free_games_status_reads_upstream_revision_from_run_log(monkeypatch):
     assert status["accounts"][0]["logs"]["last_run"]["path"] == "accounts/main/last-run.log"
 
 
+def test_free_games_status_reads_source_revision_from_successful_update(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main"}],
+                )
+            )
+        )
+        service._write_update_source_info(
+            "latest: Pulling from vogler/free-games-claimer\n"
+            "Digest: sha256:1111111111111111111111111111111111111111111111111111111111111111\n"
+            "Status: Downloaded newer image"
+        )
+        source = service.get_status()["source"]
+
+    assert source["image"] == "ghcr.io/vogler/free-games-claimer:latest"
+    assert source["revision"] == (
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    )
+    assert source["detected_from"] == "last-update.log"
+    assert source["updated_at"]
+
+
+def test_free_games_status_keeps_run_revision_when_update_has_no_digest(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        account_dir = data_dir / "accounts" / "main"
+        account_dir.mkdir(parents=True)
+        (account_dir / "last-run.log").write_text(
+            "Version: https://github.com/vogler/free-games-claimer/tree/99c1f05302aeece21a628797cfdffb561ee38956",
+            encoding="utf8",
+        )
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main"}],
+                )
+            )
+        )
+        service._write_update_source_info("Status: Image is up to date")
+        source = service.get_status()["source"]
+
+    assert source["revision"] == "99c1f05302aeece21a628797cfdffb561ee38956"
+    assert source["detected_from"] == "accounts/main/last-run.log"
+
+
 def test_free_games_log_reader_redacts_configured_secrets_and_headers(monkeypatch):
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
         data_dir = Path(temp_dir)

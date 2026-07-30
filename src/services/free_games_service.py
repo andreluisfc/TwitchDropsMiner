@@ -8,12 +8,13 @@ configuration, scheduling, state and UI; the claimer owns store automation.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
 from collections.abc import Coroutine
 from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -299,8 +300,11 @@ class FreeGamesService:
             output, _ = await process.communicate()
             log_path = FREE_GAMES_DATA_DIR / "last-update.log"
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            log_path.write_text(output.decode(errors="replace")[-12000:], encoding="utf8")
+            output_text = output.decode(errors="replace")[-12000:]
+            log_path.write_text(output_text, encoding="utf8")
             success = process.returncode == 0
+            if success:
+                self._write_update_source_info(output_text)
             if not success:
                 self._state["last_error"] = f"Update exited with {process.returncode}"
         except Exception as exc:
@@ -525,13 +529,28 @@ class FreeGamesService:
         }
 
     def _source_info(self) -> dict[str, Any]:
-        info: dict[str, Any] = {
+        update_source = self._source_info_from_update()
+        run_source = self._source_info_from_run_log()
+        if (
+            self._source_updated_at(update_source) >= self._source_updated_at(run_source)
+            and (update_source.get("revision") or not run_source.get("revision"))
+        ):
+            return update_source
+        return run_source
+
+    def _empty_source_info(self) -> dict[str, Any]:
+        return {
             "repository": "https://github.com/vogler/free-games-claimer",
+            "image": None,
             "revision": None,
             "revision_url": None,
             "build": None,
             "detected_from": None,
+            "updated_at": None,
         }
+
+    def _source_info_from_run_log(self) -> dict[str, Any]:
+        info: dict[str, Any] = self._empty_source_info()
         log_path = self._latest_run_log_path()
         if log_path is None:
             return info
@@ -546,7 +565,51 @@ class FreeGamesService:
         if build_match:
             info["build"] = build_match.group("value").strip()
         info["detected_from"] = log_path.relative_to(FREE_GAMES_DATA_DIR).as_posix()
+        info["updated_at"] = datetime.fromtimestamp(log_path.stat().st_mtime).astimezone().isoformat(
+            timespec="seconds"
+        )
         return info
+
+    def _source_info_from_update(self) -> dict[str, Any]:
+        info: dict[str, Any] = self._empty_source_info()
+        data = json_load(self._source_info_path(), {}, merge=False)
+        if not isinstance(data, dict):
+            return info
+        for key in info:
+            if key in data:
+                info[key] = data[key]
+        return info
+
+    def _write_update_source_info(self, update_output: str) -> None:
+        digest_match = re.search(r"^Digest:\s*(?P<digest>sha256:[0-9a-f]{64})$", update_output, re.MULTILINE)
+        source = self._empty_source_info()
+        source.update(
+            {
+                "image": self._image,
+                "revision": digest_match.group("digest") if digest_match else None,
+                "revision_url": None,
+                "detected_from": "last-update.log",
+                "updated_at": self._now(),
+            }
+        )
+        source_path = self._source_info_path()
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_text(
+            json.dumps(source, indent=2, sort_keys=True),
+            encoding="utf8",
+        )
+
+    def _source_info_path(self) -> Path:
+        return FREE_GAMES_DATA_DIR / "last-source.json"
+
+    def _source_updated_at(self, source: dict[str, Any]) -> datetime:
+        value = source.get("updated_at")
+        if not value:
+            return datetime.fromtimestamp(0, timezone.utc).astimezone()
+        try:
+            return datetime.fromisoformat(str(value))
+        except ValueError:
+            return datetime.fromtimestamp(0, timezone.utc).astimezone()
 
     def _attention_info(self) -> dict[str, Any]:
         info = self._empty_attention_info()
