@@ -112,6 +112,11 @@ class FreeGamesService:
     def run_now(self, account_id: str | None = None) -> bool:
         if not self._enabled:
             return False
+        if not self.has_enabled_accounts(account_id):
+            self._state["last_error"] = "No enabled Epic accounts configured."
+            self._save_state()
+            self._twitch.telegram.queue_status_update()
+            return False
         if self._run_task is not None and not self._run_task.done():
             return False
         self._run_task = self._create_task(self._run_accounts(account_id))
@@ -132,9 +137,7 @@ class FreeGamesService:
             await asyncio.sleep(60)
 
     async def _run_accounts(self, account_id: str | None = None) -> None:
-        accounts = [account for account in self._accounts if account.get("enabled", True)]
-        if account_id is not None:
-            accounts = [account for account in accounts if account.get("id") == account_id]
+        accounts = self._enabled_accounts(account_id)
 
         if not accounts:
             self._state["last_error"] = "No enabled Epic accounts configured."
@@ -411,6 +414,15 @@ class FreeGamesService:
 
     def account_exists(self, account_id: str) -> bool:
         return any(account.get("id") == account_id for account in self._accounts)
+
+    def has_enabled_accounts(self, account_id: str | None = None) -> bool:
+        return bool(self._enabled_accounts(account_id))
+
+    def _enabled_accounts(self, account_id: str | None = None) -> list[dict[str, Any]]:
+        accounts = [account for account in self._accounts if account.get("enabled", True)]
+        if account_id is not None:
+            accounts = [account for account in accounts if account.get("id") == account_id]
+        return accounts
 
     def _due_for_scheduled_run(self) -> bool:
         if self._run_task is not None and not self._run_task.done():

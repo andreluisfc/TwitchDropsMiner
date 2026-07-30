@@ -113,6 +113,24 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
     assert "127.0.0.1:6080:6080" in command
 
 
+def test_free_games_run_now_requires_enabled_account(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    twitch = make_twitch(
+        SimpleNamespace(
+            free_games_enabled=True,
+            free_games_runner="docker",
+            free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+            free_games_schedule_hours=24,
+            free_games_accounts=[{"id": "disabled", "enabled": False}],
+        )
+    )
+    service = FreeGamesService(twitch)
+
+    assert not service.run_now()
+    assert service.get_status()["last_error"] == "No enabled Epic accounts configured."
+    twitch.telegram.queue_status_update.assert_called_once()
+
+
 def test_settings_manager_masks_and_preserves_free_games_secrets(monkeypatch):
     settings = SimpleNamespace(
         free_games_accounts=[

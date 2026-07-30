@@ -255,6 +255,8 @@ async def run_free_games(request: FreeGamesRunRequest):
         raise HTTPException(status_code=400, detail="Free games module is disabled")
     if request.account_id and not twitch_client.free_games.account_exists(request.account_id):
         raise HTTPException(status_code=404, detail="Epic account not found")
+    if not twitch_client.free_games.has_enabled_accounts(request.account_id):
+        raise HTTPException(status_code=400, detail="No enabled Epic accounts configured")
     if not twitch_client.free_games.run_now(request.account_id):
         raise HTTPException(status_code=409, detail="Free games module is already running")
     return {"success": True}
