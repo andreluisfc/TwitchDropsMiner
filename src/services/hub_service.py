@@ -208,6 +208,7 @@ class HubService:
         status = self._twitch.free_games.get_status()
         metadata = status.get("module") or {}
         accounts = status.get("accounts") or []
+        automation = status.get("automation") or {}
         return {
             "id": metadata.get("id", "free-games-epic"),
             "name": metadata.get("name", "Epic Freebies"),
@@ -222,6 +223,7 @@ class HubService:
             "metrics": {
                 "accounts": len(accounts),
                 "enabled_accounts": sum(1 for account in accounts if account.get("enabled", True)),
+                "scheduled_accounts": automation.get("scheduled_accounts", 0),
                 "claimed_games": sum(
                     len(account.get("claimed_games") or []) for account in accounts
                 ),
@@ -231,6 +233,7 @@ class HubService:
                 "source": status.get("source"),
                 "update": self._free_games_update_details(status),
                 "attention": status.get("attention"),
+                "automation": automation,
                 "next_run_at": status.get("next_run_at"),
                 "last_error": status.get("last_error"),
                 "vnc": status.get("vnc"),
@@ -247,6 +250,9 @@ class HubService:
             return f"Running {active}"
         if not status.get("accounts"):
             return "No accounts configured"
+        automation = status.get("automation") or {}
+        if automation.get("paused"):
+            return "Automation paused"
         return "Idle"
 
     def _free_games_update_details(self, status: dict[str, Any]) -> dict[str, Any]:

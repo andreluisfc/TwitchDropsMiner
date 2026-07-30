@@ -42,6 +42,11 @@ def test_hub_service_returns_twitch_and_epic_modules():
                     {"id": "main", "enabled": True, "claimed_games": [{"title": "Game A"}]},
                     {"id": "disabled", "enabled": False, "claimed_games": []},
                 ],
+                "automation": {
+                    "scheduled_accounts": 1,
+                    "paused": False,
+                    "pause_reason": None,
+                },
                 "image": "ghcr.io/vogler/free-games-claimer:latest",
                 "next_run_at": "2026-07-31T10:00:00-03:00",
                 "last_update_started_at": "2026-07-30T08:00:00-03:00",
@@ -82,6 +87,7 @@ def test_hub_service_returns_twitch_and_epic_modules():
     assert epic_module["metrics"] == {
         "accounts": 2,
         "enabled_accounts": 1,
+        "scheduled_accounts": 1,
         "claimed_games": 1,
     }
     assert epic_module["details"]["source"]["revision"] == (
@@ -95,6 +101,7 @@ def test_hub_service_returns_twitch_and_epic_modules():
         "last_success": True,
     }
     assert epic_module["details"]["attention"]["reason"] == "captcha_required"
+    assert epic_module["details"]["automation"]["scheduled_accounts"] == 1
 
 
 def test_hub_service_labels_epic_setup_state():

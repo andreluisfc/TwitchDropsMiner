@@ -121,7 +121,8 @@ class FreeGamesService:
             "last_update_finished_at": self._state.get("last_update_finished_at"),
             "last_update_success": self._state.get("last_update_success"),
             "last_error": self._state.get("last_error"),
-            "next_run_at": self._next_run_at(),
+            "automation": self._automation_status(),
+            "next_run_at": self._status_next_run_at(),
             "vnc": self._vnc_status(),
             "accounts": [self._account_status(account) for account in self._accounts],
         }
@@ -166,11 +167,21 @@ class FreeGamesService:
                 await self._recover_interrupted_state()
                 await self._adopt_active_docker_run_if_needed()
             if self._enabled and self._due_for_scheduled_run():
-                self.run_now()
+                self._run_scheduled_now()
             await asyncio.sleep(60)
 
-    async def _run_accounts(self, account_id: str | None = None) -> None:
+    def _run_scheduled_now(self) -> bool:
+        if self._run_task is not None and not self._run_task.done():
+            return False
+        if not self._scheduled_accounts():
+            return False
+        self._run_task = self._create_task(self._run_accounts(scheduled=True))
+        return self._run_task is not None
+
+    async def _run_accounts(self, account_id: str | None = None, *, scheduled: bool = False) -> None:
         accounts = self._enabled_accounts(account_id)
+        if scheduled and account_id is None:
+            accounts = self._scheduled_accounts()
 
         if not accounts:
             self._state["last_error"] = "No enabled Epic accounts configured."
@@ -466,6 +477,7 @@ class FreeGamesService:
         account_id = str(account.get("id"))
         account_state = self._state.get("accounts", {}).get(account_id, {})
         claims = self._read_epic_claims(account_id)
+        attention = self._account_attention_info(account_id)
         return {
             "id": account_id,
             "name": account.get("name") or account.get("email") or account_id,
@@ -475,6 +487,7 @@ class FreeGamesService:
             "last_run_finished_at": account_state.get("last_run_finished_at"),
             "last_run_success": account_state.get("last_run_success"),
             "last_error": account_state.get("last_error"),
+            "attention": attention,
             "claimed_games": claims["claimed"],
             "failed_games": claims["failed"],
             "known_games_count": claims["known_count"],
@@ -505,12 +518,7 @@ class FreeGamesService:
         return info
 
     def _attention_info(self) -> dict[str, Any]:
-        info = {
-            "required": False,
-            "reason": None,
-            "message": None,
-            "account_id": None,
-        }
+        info = self._empty_attention_info()
         log_path = self._latest_run_log_path()
         if log_path is None:
             return info
@@ -518,6 +526,21 @@ class FreeGamesService:
         text = log_path.read_text(encoding="utf8", errors="replace")
         attention = self._classify_attention(text, account_id)
         return attention or info
+
+    def _account_attention_info(self, account_id: str) -> dict[str, Any]:
+        log_path = self._account_run_log_path(account_id)
+        if log_path is None:
+            return self._empty_attention_info(account_id)
+        text = log_path.read_text(encoding="utf8", errors="replace")
+        return self._classify_attention(text, account_id) or self._empty_attention_info(account_id)
+
+    def _empty_attention_info(self, account_id: str | None = None) -> dict[str, Any]:
+        return {
+            "required": False,
+            "reason": None,
+            "message": None,
+            "account_id": account_id,
+        }
 
     def _classify_attention(self, text: str, account_id: str | None = None) -> dict[str, Any]:
         lower_text = text.lower()
@@ -556,6 +579,10 @@ class FreeGamesService:
         if not logs:
             return None
         return max(logs, key=lambda path: path.stat().st_mtime)
+
+    def _account_run_log_path(self, account_id: str) -> Path | None:
+        log_path = self._account_data_dir(account_id) / "last-run.log"
+        return log_path if log_path.is_file() else None
 
     def _read_epic_claims(self, account_id: str, limit: int = 8) -> dict[str, Any]:
         db_path = self._account_data_dir(account_id) / "db.json"
@@ -651,16 +678,40 @@ class FreeGamesService:
             accounts = [account for account in accounts if account.get("id") == account_id]
         return accounts
 
+    def _scheduled_accounts(self) -> list[dict[str, Any]]:
+        return [
+            account
+            for account in self._enabled_accounts()
+            if not self._account_attention_info(str(account["id"])).get("required")
+        ]
+
     def _due_for_scheduled_run(self) -> bool:
         startup_elapsed = datetime.now().astimezone() - self._started_at
         if startup_elapsed < timedelta(minutes=FREE_GAMES_STARTUP_GRACE_MINUTES):
             return False
         if self._run_task is not None and not self._run_task.done():
             return False
+        if not self._scheduled_accounts():
+            return False
         next_run = self._next_run_at()
         if next_run is None:
             return bool(self._accounts)
         return datetime.fromisoformat(next_run) <= datetime.now().astimezone()
+
+    def _status_next_run_at(self) -> str | None:
+        if not self._scheduled_accounts():
+            return None
+        return self._next_run_at()
+
+    def _automation_status(self) -> dict[str, Any]:
+        enabled_accounts = self._enabled_accounts()
+        scheduled_accounts = self._scheduled_accounts()
+        paused = self._enabled and bool(enabled_accounts) and not scheduled_accounts
+        return {
+            "scheduled_accounts": len(scheduled_accounts),
+            "paused": paused,
+            "pause_reason": "attention_required" if paused else None,
+        }
 
     def _next_run_at(self) -> str | None:
         reference_at = self._last_attempt_at()

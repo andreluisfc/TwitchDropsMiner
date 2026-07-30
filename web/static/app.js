@@ -2515,6 +2515,9 @@ function updateFreeGamesStatus(status) {
         if (status.active_account_id) {
             el.appendChild(makeElement('span', {}, `Account: ${status.active_account_id}`));
         }
+        if (status.automation?.paused) {
+            el.appendChild(makeElement('span', { class: 'error-text' }, 'Automatic runs paused until manual attention is resolved.'));
+        }
         if (status.next_run_at) {
             el.appendChild(makeElement('span', {}, `Next: ${formatLocalDateTime(status.next_run_at)}`));
         }
@@ -2564,7 +2567,9 @@ function updateFreeGamesStatus(status) {
             if (account.enabled === false) {
                 el.appendChild(makeElement('div', { class: 'muted-text' }, 'Disabled'));
             }
-            if (account.last_error) {
+            if (account.attention?.required && account.attention.message) {
+                el.appendChild(makeElement('div', { class: 'error-text' }, account.attention.message));
+            } else if (account.last_error) {
                 el.appendChild(makeElement('div', { class: 'error-text' }, account.last_error));
             }
             const games = account.claimed_games || [];

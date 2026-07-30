@@ -399,6 +399,8 @@ class TelegramService:
         elif status.get("running"):
             active = status.get("active_account_id") or "all accounts"
             lines.append(f"🔄 Running now: {self._html(active)}")
+        elif (status.get("automation") or {}).get("paused"):
+            lines.append("⏸ Automatic Epic runs paused until manual attention is resolved.")
         elif status.get("next_run_at"):
             lines.append(f"⏭ Next run: {self._html(self._format_datetime(status['next_run_at']))}")
 
@@ -415,6 +417,9 @@ class TelegramService:
             icon = "✅" if account.get("last_run_success") else "⚠️"
             if account.get("last_run_success") is None:
                 icon = "⏳"
+            account_attention = account.get("attention") or {}
+            if account_attention.get("required"):
+                icon = "🚨"
             lines.append(f"{icon} <b>{self._html(account.get('name') or account.get('id'))}</b>")
             claimed_games = account.get("claimed_games") or []
             if claimed_games:
@@ -423,6 +428,8 @@ class TelegramService:
                     url = game.get("url") or ""
                     game_link = self._game_campaign_link(title, url)
                     lines.append(f"  • 🛍 {game_link}")
+            elif account_attention.get("message"):
+                lines.append(f"  • {self._html(account_attention['message'])}")
             elif account.get("last_error"):
                 lines.append(f"  • {self._html(account['last_error'])}")
             else:

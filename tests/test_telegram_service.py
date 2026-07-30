@@ -166,12 +166,27 @@ def test_telegram_free_games_lines_include_attention_message():
             return_value={
                 "enabled": True,
                 "running": False,
-                "next_run_at": "2026-07-31T20:14:00+00:00",
+                "automation": {
+                    "scheduled_accounts": 0,
+                    "paused": True,
+                    "pause_reason": "attention_required",
+                },
+                "next_run_at": None,
                 "attention": {
                     "required": True,
                     "message": "Epic captcha required. Start a manual run and use Browser to solve it.",
                 },
-                "accounts": [{"id": "main", "name": "Main", "last_run_success": False}],
+                "accounts": [
+                    {
+                        "id": "main",
+                        "name": "Main",
+                        "last_run_success": False,
+                        "attention": {
+                            "required": True,
+                            "message": "Epic captcha required. Start a manual run and use Browser to solve it.",
+                        },
+                    }
+                ],
             }
         )
     )
@@ -192,6 +207,8 @@ def test_telegram_free_games_lines_include_attention_message():
     lines = TelegramService(twitch)._format_free_games_lines()
 
     assert "🚨 Epic captcha required. Start a manual run and use Browser to solve it." in lines
+    assert "⏸ Automatic Epic runs paused until manual attention is resolved." in lines
+    assert "🚨 <b>Main</b>" in lines
 
 
 def test_telegram_drop_claimed_updates_status_without_separate_message(monkeypatch):

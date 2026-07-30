@@ -156,6 +156,41 @@ def test_free_games_status_detects_epic_captcha_attention(monkeypatch):
     }
 
 
+def test_free_games_status_marks_automation_paused_when_all_accounts_need_attention(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        account_dir = data_dir / "accounts" / "main"
+        account_dir.mkdir(parents=True)
+        (account_dir / "last-run.log").write_text(
+            "Got a captcha during login!",
+            encoding="utf8",
+        )
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main"}],
+                )
+            )
+        )
+        service._started_at = service._started_at - timedelta(minutes=11)
+        status = service.get_status()
+        due = service._due_for_scheduled_run()
+
+    assert status["automation"] == {
+        "scheduled_accounts": 0,
+        "paused": True,
+        "pause_reason": "attention_required",
+    }
+    assert status["next_run_at"] is None
+    assert status["accounts"][0]["attention"]["reason"] == "captcha_required"
+    assert not due
+
+
 def test_free_games_state_loader_preserves_dynamic_account_ids(monkeypatch):
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
         state_path = Path(temp_dir) / "free_games_state.json"
@@ -382,6 +417,42 @@ def test_free_games_scheduler_waits_during_startup_grace_window():
     service._started_at = service._started_at - timedelta(minutes=11)
 
     assert service._due_for_scheduled_run()
+
+
+@pytest.mark.asyncio
+async def test_free_games_scheduled_run_skips_accounts_requiring_attention(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        blocked_dir = data_dir / "accounts" / "blocked"
+        blocked_dir.mkdir(parents=True)
+        (blocked_dir / "last-run.log").write_text(
+            "Epic login timed out while waiting for captcha.",
+            encoding="utf8",
+        )
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[
+                        {"id": "blocked", "enabled": True},
+                        {"id": "ready", "enabled": True},
+                    ],
+                )
+            )
+        )
+        service._run_account = AsyncMock(return_value=True)
+
+        await service._run_accounts(scheduled=True)
+        automation = service.get_status()["automation"]
+
+    service._run_account.assert_awaited_once_with({"id": "ready", "enabled": True})
+    assert service._state["last_run_success"] is True
+    assert automation["scheduled_accounts"] == 1
 
 
 @pytest.mark.asyncio
