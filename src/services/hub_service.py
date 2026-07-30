@@ -234,6 +234,7 @@ class HubService:
                 "update": self._free_games_update_details(status),
                 "attention": status.get("attention"),
                 "automation": automation,
+                "logs": status.get("logs"),
                 "next_run_at": status.get("next_run_at"),
                 "last_error": status.get("last_error"),
                 "vnc": status.get("vnc"),

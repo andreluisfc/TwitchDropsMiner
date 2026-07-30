@@ -99,6 +99,7 @@ def test_free_games_status_reads_upstream_revision_from_run_log(monkeypatch):
             ),
             encoding="utf8",
         )
+        (data_dir / "last-update.log").write_text("Image is up to date", encoding="utf8")
         monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
         service = FreeGamesService(
             make_twitch(
@@ -111,13 +112,20 @@ def test_free_games_status_reads_upstream_revision_from_run_log(monkeypatch):
                 )
             )
         )
-        source = service.get_status()["source"]
+        status = service.get_status()
+        source = status["source"]
 
     assert source["repository"] == "https://github.com/vogler/free-games-claimer"
     assert source["revision"] == "99c1f05302aeece21a628797cfdffb561ee38956"
     assert source["revision_url"].endswith("/99c1f05302aeece21a628797cfdffb561ee38956")
     assert source["build"] == "Thu, 15 May 2025 22:16:05 +0000"
     assert source["detected_from"] == "accounts/main/last-run.log"
+    assert status["logs"]["latest_run"]["available"] is True
+    assert status["logs"]["latest_run"]["path"] == "accounts/main/last-run.log"
+    assert status["logs"]["latest_run"]["updated_at"]
+    assert status["logs"]["last_update"]["available"] is True
+    assert status["logs"]["last_update"]["path"] == "last-update.log"
+    assert status["accounts"][0]["logs"]["last_run"]["path"] == "accounts/main/last-run.log"
 
 
 def test_free_games_status_detects_epic_captcha_attention(monkeypatch):

@@ -2335,6 +2335,15 @@ function updateHubModules(hub) {
             if (attention?.required && attention.message) {
                 main.appendChild(makeElement('div', { class: 'error-text' }, attention.message));
             }
+            const logs = module.details?.logs || {};
+            const latestRunLog = formatLogInfo(logs.latest_run, 'Run log');
+            const lastUpdateLog = formatLogInfo(logs.last_update, 'Update log');
+            if (latestRunLog) {
+                main.appendChild(makeElement('div', { class: 'muted-text' }, latestRunLog));
+            }
+            if (lastUpdateLog) {
+                main.appendChild(makeElement('div', { class: 'muted-text' }, lastUpdateLog));
+            }
         }));
         row.appendChild(makeElement('div', { class: 'hub-module-meta' }, '', meta => {
             meta.appendChild(makeElement('span', { class: module.enabled ? 'status-pill active' : 'status-pill' }, module.enabled ? 'Enabled' : 'Disabled'));
@@ -2374,6 +2383,14 @@ function formatModuleUpdate(update) {
     if (!update.last_finished_at) return '';
     const result = update.last_success ? 'OK' : 'Failed';
     return `Last update: ${result} · ${formatLocalDateTime(update.last_finished_at)}`;
+}
+
+function formatLogInfo(log, label) {
+    if (!log?.available) return '';
+    const details = [];
+    if (log.updated_at) details.push(formatLocalDateTime(log.updated_at));
+    if (Number(log.size_bytes || 0) > 0) details.push(`${log.size_bytes} bytes`);
+    return `${label}: ${details.join(' · ') || log.path || 'available'}`;
 }
 
 const HUB_MODULE_ACTION_LABELS = {
@@ -2532,6 +2549,10 @@ function updateFreeGamesStatus(status) {
                 el.appendChild(makeElement('span', {}, label));
             }
         }
+        const latestRunLog = formatLogInfo(status.logs?.latest_run, 'Run log');
+        if (latestRunLog) {
+            el.appendChild(makeElement('span', {}, latestRunLog));
+        }
         if (status.attention?.required && status.attention.message) {
             el.appendChild(makeElement('span', { class: 'error-text' }, status.attention.message));
         }
@@ -2571,6 +2592,10 @@ function updateFreeGamesStatus(status) {
                 el.appendChild(makeElement('div', { class: 'error-text' }, account.attention.message));
             } else if (account.last_error) {
                 el.appendChild(makeElement('div', { class: 'error-text' }, account.last_error));
+            }
+            const accountRunLog = formatLogInfo(account.logs?.last_run, 'Run log');
+            if (accountRunLog) {
+                el.appendChild(makeElement('div', { class: 'muted-text' }, accountRunLog));
             }
             const games = account.claimed_games || [];
             if (games.length) {

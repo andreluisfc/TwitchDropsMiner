@@ -59,6 +59,20 @@ def test_hub_service_returns_twitch_and_epic_modules():
                     "message": "Epic captcha required.",
                     "account_id": "main",
                 },
+                "logs": {
+                    "latest_run": {
+                        "available": True,
+                        "path": "accounts/main/last-run.log",
+                        "updated_at": "2026-07-30T08:02:00-03:00",
+                        "size_bytes": 2048,
+                    },
+                    "last_update": {
+                        "available": True,
+                        "path": "last-update.log",
+                        "updated_at": "2026-07-30T08:01:00-03:00",
+                        "size_bytes": 512,
+                    },
+                },
                 "vnc": {"enabled": True, "active": False},
             }
         ),
@@ -102,6 +116,9 @@ def test_hub_service_returns_twitch_and_epic_modules():
     }
     assert epic_module["details"]["attention"]["reason"] == "captcha_required"
     assert epic_module["details"]["automation"]["scheduled_accounts"] == 1
+    assert epic_module["details"]["logs"]["latest_run"]["path"] == (
+        "accounts/main/last-run.log"
+    )
 
 
 def test_hub_service_labels_epic_setup_state():

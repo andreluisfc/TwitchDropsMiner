@@ -123,6 +123,7 @@ class FreeGamesService:
             "last_error": self._state.get("last_error"),
             "automation": self._automation_status(),
             "next_run_at": self._status_next_run_at(),
+            "logs": self._logs_info(),
             "vnc": self._vnc_status(),
             "accounts": [self._account_status(account) for account in self._accounts],
         }
@@ -488,6 +489,9 @@ class FreeGamesService:
             "last_run_success": account_state.get("last_run_success"),
             "last_error": account_state.get("last_error"),
             "attention": attention,
+            "logs": {
+                "last_run": self._log_info(self._account_run_log_path(account_id)),
+            },
             "claimed_games": claims["claimed"],
             "failed_games": claims["failed"],
             "known_games_count": claims["known_count"],
@@ -583,6 +587,34 @@ class FreeGamesService:
     def _account_run_log_path(self, account_id: str) -> Path | None:
         log_path = self._account_data_dir(account_id) / "last-run.log"
         return log_path if log_path.is_file() else None
+
+    def _logs_info(self) -> dict[str, Any]:
+        return {
+            "latest_run": self._log_info(self._latest_run_log_path()),
+            "last_update": self._log_info(FREE_GAMES_DATA_DIR / "last-update.log"),
+        }
+
+    def _log_info(self, log_path: Path | None) -> dict[str, Any]:
+        if log_path is None or not log_path.is_file():
+            return {
+                "available": False,
+                "path": None,
+                "updated_at": None,
+                "size_bytes": 0,
+            }
+        stat = log_path.stat()
+        try:
+            relative_path = log_path.relative_to(FREE_GAMES_DATA_DIR).as_posix()
+        except ValueError:
+            relative_path = log_path.name
+        return {
+            "available": True,
+            "path": relative_path,
+            "updated_at": datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat(
+                timespec="seconds"
+            ),
+            "size_bytes": stat.st_size,
+        }
 
     def _read_epic_claims(self, account_id: str, limit: int = 8) -> dict[str, Any]:
         db_path = self._account_data_dir(account_id) / "db.json"
