@@ -684,6 +684,49 @@ async def test_free_games_run_accounts_marks_global_failure_when_account_fails(m
 
 
 @pytest.mark.asyncio
+async def test_free_games_run_account_clears_previous_attention_at_start(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self):
+            return b"checked epic-games successfully", None
+
+    async def fake_exec(*command, **kwargs):
+        return FakeProcess()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[{"id": "main"}],
+            )
+        )
+    )
+    service._prepare_docker_container = AsyncMock(return_value=True)
+
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        account_dir = data_dir / "accounts" / "main"
+        account_dir.mkdir(parents=True)
+        (account_dir / "last-run.log").write_text("Got a captcha during login!", encoding="utf8")
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+
+        assert service.get_status()["accounts"][0]["attention"]["required"] is True
+        assert await service._run_account({"id": "main"})
+        status = service.get_status()
+
+    assert status["accounts"][0]["attention_cleared_at"]
+    assert status["accounts"][0]["attention"]["required"] is False
+    assert status["accounts"][0]["last_run_success"] is True
+
+
+@pytest.mark.asyncio
 async def test_free_games_run_account_times_out_and_stops_container(monkeypatch):
     monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
 

@@ -344,7 +344,13 @@ class FreeGamesService:
         account_id = str(account["id"])
         started_at = self._now()
         account_state = self._state.setdefault("accounts", {}).setdefault(account_id, {})
-        account_state.update({"last_run_started_at": started_at, "last_error": None})
+        account_state.update(
+            {
+                "last_run_started_at": started_at,
+                "last_error": None,
+                "attention_cleared_at": datetime.now().astimezone().isoformat(),
+            }
+        )
         self._save_state()
 
         account_dir = self._account_data_dir(account_id)
