@@ -300,8 +300,21 @@ header h1 {
 }
 
 .free-games-account-card h3 {
+    min-width: 0;
     margin-bottom: 6px;
     font-size: 15px;
+    overflow-wrap: anywhere;
+}
+
+.free-games-account-title {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    justify-content: space-between;
+}
+
+.free-games-account-title .small-btn {
+    flex: 0 0 auto;
 }
 
 .free-games-game-list {

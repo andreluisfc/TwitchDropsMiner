@@ -31,6 +31,7 @@ RECENT_CLAIMED_LIMIT = 12
 CALLBACK_FREE_GAMES_RUN = "free_games:run"
 CALLBACK_FREE_GAMES_UPDATE = "free_games:update"
 CALLBACK_STATUS_REFRESH = "status:refresh"
+CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX = "fg:r:"
 TELEGRAM_STATE_DEFAULTS: dict[str, Any] = {
     "status_message_id": None,
     "status_message_kind": None,
@@ -197,14 +198,36 @@ class TelegramService:
         return False
 
     def _status_reply_markup(self) -> dict[str, Any]:
-        return {
-            "inline_keyboard": [
-                [
-                    {"text": "🔄 Run Epic", "callback_data": CALLBACK_FREE_GAMES_RUN},
-                    {"text": "⬆️ Update Epic", "callback_data": CALLBACK_FREE_GAMES_UPDATE},
-                ],
-                [{"text": "♻️ Refresh", "callback_data": CALLBACK_STATUS_REFRESH}],
+        keyboard = [
+            [
+                {"text": "🔄 Run Epic", "callback_data": CALLBACK_FREE_GAMES_RUN},
+                {"text": "⬆️ Update Epic", "callback_data": CALLBACK_FREE_GAMES_UPDATE},
             ]
+        ]
+        free_games = getattr(self._twitch, "free_games", None)
+        if free_games is not None:
+            try:
+                status = free_games.get_status()
+            except Exception:
+                logger.debug("Could not build Telegram free-games keyboard", exc_info=True)
+            else:
+                if status.get("enabled"):
+                    account_buttons = []
+                    for index, account in enumerate((status.get("accounts") or [])[:4]):
+                        if account.get("enabled") is False:
+                            continue
+                        name = str(account.get("name") or account.get("id") or "Account")
+                        account_buttons.append(
+                            {
+                                "text": f"▶️ {name[:24]}",
+                                "callback_data": f"{CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX}{index}",
+                            }
+                        )
+                    for index in range(0, len(account_buttons), 2):
+                        keyboard.append(account_buttons[index : index + 2])
+        keyboard.append([{"text": "♻️ Refresh", "callback_data": CALLBACK_STATUS_REFRESH}])
+        return {
+            "inline_keyboard": keyboard
         }
 
     def _format_status_message(self, queue_limit: int = 8) -> str:
@@ -481,6 +504,10 @@ class TelegramService:
             await self._answer_callback(callback_id, "Epic module is unavailable.")
             return
 
+        if data.startswith(CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX):
+            await self._handle_free_games_account_callback(callback_id, data, free_games)
+            return
+
         if data == CALLBACK_FREE_GAMES_RUN:
             status = free_games.get_status()
             if not status.get("enabled"):
@@ -505,6 +532,38 @@ class TelegramService:
                 self.queue_status_update(immediate=True)
             else:
                 await self._answer_callback(callback_id, "Epic module update could not be started.")
+
+    async def _handle_free_games_account_callback(
+        self, callback_id: str, data: str, free_games: Any
+    ) -> None:
+        try:
+            account_index = int(data.removeprefix(CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX))
+        except ValueError:
+            await self._answer_callback(callback_id, "Epic account was not found.")
+            return
+
+        status = free_games.get_status()
+        accounts = status.get("accounts") or []
+        if not status.get("enabled"):
+            await self._answer_callback(callback_id, "Epic module is disabled.")
+            return
+        if status.get("running"):
+            await self._answer_callback(callback_id, "Epic run is already active.")
+            return
+        if account_index < 0 or account_index >= len(accounts):
+            await self._answer_callback(callback_id, "Epic account was not found.")
+            return
+
+        account = accounts[account_index]
+        if account.get("enabled") is False:
+            await self._answer_callback(callback_id, "Epic account is disabled.")
+            return
+        account_id = str(account.get("id") or "")
+        if account_id and free_games.run_now(account_id):
+            await self._answer_callback(callback_id, f"Epic run started for {account.get('name')}.")
+            self.queue_status_update(immediate=True)
+        else:
+            await self._answer_callback(callback_id, "Epic run could not be started.")
 
     async def _answer_callback(self, callback_id: str, text: str) -> None:
         if not callback_id:

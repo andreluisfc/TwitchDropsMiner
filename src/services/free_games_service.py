@@ -78,6 +78,13 @@ class FreeGamesService:
 
     def get_status(self) -> dict[str, Any]:
         return {
+            "module": {
+                "id": "free-games-epic",
+                "name": "Epic Freebies",
+                "upstream": "https://github.com/vogler/free-games-claimer",
+                "update_strategy": self._runner,
+                "actions": ["run", "run_account", "update"],
+            },
             "enabled": self._enabled,
             "runner": self._runner,
             "image": self._image,
@@ -93,6 +100,12 @@ class FreeGamesService:
             "last_update_success": self._state.get("last_update_success"),
             "last_error": self._state.get("last_error"),
             "next_run_at": self._next_run_at(),
+            "vnc": {
+                "enabled": self._runner == "docker",
+                "url": "http://localhost:6080",
+                "bind": "127.0.0.1:6080",
+                "active": bool(self._state.get("running")),
+            },
             "accounts": [self._account_status(account) for account in self._accounts],
         }
 
@@ -395,6 +408,9 @@ class FreeGamesService:
     def _accounts(self) -> list[dict[str, Any]]:
         accounts = getattr(self._twitch.settings, "free_games_accounts", []) or []
         return [account for account in accounts if isinstance(account, dict) and account.get("id")]
+
+    def account_exists(self, account_id: str) -> bool:
+        return any(account.get("id") == account_id for account in self._accounts)
 
     def _due_for_scheduled_run(self) -> bool:
         if self._run_task is not None and not self._run_task.done():

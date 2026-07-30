@@ -54,6 +54,31 @@ def test_free_games_service_reads_epic_claims(monkeypatch):
         assert status["accounts"][0]["failed_games"][0]["title"] == "Game B"
 
 
+def test_free_games_status_exposes_module_metadata_and_account_lookup():
+    settings = SimpleNamespace(
+        free_games_enabled=True,
+        free_games_runner="docker",
+        free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+        free_games_schedule_hours=24,
+        free_games_accounts=[{"id": "main", "name": "Main", "email": "main@example.com"}],
+    )
+
+    service = FreeGamesService(make_twitch(settings))
+    status = service.get_status()
+
+    assert status["module"]["id"] == "free-games-epic"
+    assert status["module"]["upstream"] == "https://github.com/vogler/free-games-claimer"
+    assert "run_account" in status["module"]["actions"]
+    assert status["vnc"] == {
+        "enabled": True,
+        "url": "http://localhost:6080",
+        "bind": "127.0.0.1:6080",
+        "active": False,
+    }
+    assert service.account_exists("main")
+    assert not service.account_exists("missing")
+
+
 def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypatch):
     monkeypatch.setenv("HOST_DATA_DIR", "/opt/tdm/data")
     settings = SimpleNamespace(

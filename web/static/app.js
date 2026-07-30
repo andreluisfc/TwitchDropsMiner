@@ -2292,6 +2292,7 @@ function updateFreeGamesStatus(status) {
         container.replaceChildren(makeElement('p', { class: 'empty-message-small' }, 'Epic module is disabled.'));
         return;
     }
+    const busy = Boolean(status.running || status.updating);
 
     const summary = makeElement('div', { class: 'free-games-summary' }, '', el => {
         el.appendChild(makeElement('span', {}, status.running ? 'Running now' : 'Idle'));
@@ -2303,6 +2304,9 @@ function updateFreeGamesStatus(status) {
         }
         if (status.next_run_at) {
             el.appendChild(makeElement('span', {}, `Next: ${formatLocalDateTime(status.next_run_at)}`));
+        }
+        if (status.vnc?.active && status.vnc?.url) {
+            el.appendChild(makeElement('a', { href: status.vnc.url, target: '_blank', rel: 'noopener noreferrer' }, 'Browser'));
         }
         if (status.last_error) {
             el.appendChild(makeElement('span', { class: 'error-text' }, status.last_error));
@@ -2319,11 +2323,20 @@ function updateFreeGamesStatus(status) {
     const grid = makeElement('div', { class: 'free-games-account-grid' });
     accounts.forEach(account => {
         const card = makeElement('div', { class: 'free-games-account-card' }, '', el => {
-            el.appendChild(makeElement('h3', {}, account.name || account.email || account.id));
+            el.appendChild(makeElement('div', { class: 'free-games-account-title' }, '', header => {
+                header.appendChild(makeElement('h3', {}, account.name || account.email || account.id));
+                header.appendChild(makeElement('button', { type: 'button', class: 'small-btn' }, account.id === status.active_account_id ? 'Running' : 'Run', button => {
+                    button.disabled = busy || account.enabled === false;
+                    button.addEventListener('click', () => runFreeGamesNow(account.id));
+                }));
+            }));
             const lastRun = account.last_run_finished_at
                 ? `Last run: ${formatLocalDateTime(account.last_run_finished_at)}`
                 : 'Last run: never';
             el.appendChild(makeElement('div', { class: 'muted-text' }, lastRun));
+            if (account.enabled === false) {
+                el.appendChild(makeElement('div', { class: 'muted-text' }, 'Disabled'));
+            }
             if (account.last_error) {
                 el.appendChild(makeElement('div', { class: 'error-text' }, account.last_error));
             }
