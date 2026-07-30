@@ -505,6 +505,17 @@ class FreeGamesService:
     def _run_timeout_seconds(self) -> int:
         return self._run_timeout_minutes * 60
 
+    def _remaining_run_timeout_seconds(self) -> int:
+        started_at = self._state.get("last_run_started_at")
+        if not started_at:
+            return self._run_timeout_seconds()
+        try:
+            started = datetime.fromisoformat(str(started_at))
+        except ValueError:
+            return self._run_timeout_seconds()
+        elapsed = (datetime.now().astimezone() - started).total_seconds()
+        return max(1, int(self._run_timeout_seconds() - elapsed))
+
     @property
     def _accounts(self) -> list[dict[str, Any]]:
         accounts = getattr(self._twitch.settings, "free_games_accounts", []) or []
@@ -582,7 +593,7 @@ class FreeGamesService:
         if process.returncode is None:
             process.kill()
 
-    def _format_run_error(self, returncode: int | None, timed_out: bool) -> str:
+    def _format_run_error(self, returncode: int | str | None, timed_out: bool) -> str:
         if timed_out:
             return f"Timed out after {self._run_timeout_minutes} minute(s)."
         return f"Exited with {returncode}"
@@ -604,22 +615,31 @@ class FreeGamesService:
         container_name = self._docker_container_name(account_id)
         account_state = self._state.setdefault("accounts", {}).setdefault(account_id, {})
         returncode_text = ""
+        timed_out = False
         try:
-            wait = await self._docker_output("docker", "wait", container_name)
+            try:
+                wait = await asyncio.wait_for(
+                    self._docker_output("docker", "wait", container_name),
+                    timeout=self._remaining_run_timeout_seconds(),
+                )
+            except TimeoutError:
+                timed_out = True
+                await self._docker_output("docker", "rm", "-f", container_name)
+                wait = (0, "")
             returncode_text = wait[1].strip()
             logs = await self._docker_output("docker", "logs", container_name)
             if logs[1]:
                 log_path = self._account_data_dir(account_id) / "last-run.log"
                 log_path.parent.mkdir(parents=True, exist_ok=True)
                 log_path.write_text(logs[1][-12000:], encoding="utf8")
-            success = wait[0] == 0 and returncode_text == "0"
+            success = not timed_out and wait[0] == 0 and returncode_text == "0"
             account_state.update(
                 {
                     "last_run_finished_at": self._now(),
                     "last_run_success": success,
                     "last_error": None
                     if success
-                    else f"Exited with {returncode_text or wait[0]}",
+                    else self._format_run_error(returncode_text or wait[0], timed_out),
                 }
             )
             self._state.update(
@@ -630,7 +650,7 @@ class FreeGamesService:
                     "last_run_success": success,
                     "last_error": None
                     if success
-                    else f"Epic runner exited with {returncode_text or wait[0]}",
+                    else self._format_run_error(returncode_text or wait[0], timed_out),
                 }
             )
             self._save_state()
