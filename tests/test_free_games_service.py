@@ -220,6 +220,7 @@ async def test_free_games_run_accounts_marks_global_failure_when_account_fails(m
     assert service._state["running"] is False
     assert service._state["active_account_id"] is None
     assert service._state["last_run_success"] is False
+    assert service._state["last_error"] == "Failed Epic accounts: main"
     assert service._state["last_run_finished_at"] is not None
     service._run_account.assert_awaited_once_with({"id": "main", "enabled": True})
     assert twitch.telegram.queue_status_update.call_count == 2

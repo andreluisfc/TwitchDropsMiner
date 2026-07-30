@@ -162,12 +162,17 @@ class FreeGamesService:
         self._twitch.telegram.queue_status_update()
 
         success = True
+        failed_accounts: list[str] = []
         try:
             for account in accounts:
                 self._state["active_account_id"] = account["id"]
                 self._save_state()
                 account_success = await self._run_account(account)
                 success = success and account_success
+                if not account_success:
+                    failed_accounts.append(str(account.get("name") or account["id"]))
+            if failed_accounts:
+                self._state["last_error"] = self._format_failed_accounts(failed_accounts)
         except Exception as exc:
             success = False
             self._state["last_error"] = str(exc)
@@ -234,6 +239,13 @@ class FreeGamesService:
             )
             self._save_state()
             self._twitch.telegram.queue_status_update()
+
+    def _format_failed_accounts(self, accounts: list[str]) -> str:
+        shown_accounts = ", ".join(accounts[:3])
+        remaining = len(accounts) - 3
+        if remaining > 0:
+            shown_accounts = f"{shown_accounts}, +{remaining} more"
+        return f"Failed Epic accounts: {shown_accounts}"
 
     async def _run_account(self, account: dict[str, Any]) -> bool:
         account_id = str(account["id"])
