@@ -1,6 +1,7 @@
 import asyncio
 import json
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -221,6 +222,26 @@ def test_free_games_next_run_uses_account_attempt_when_global_state_is_incomplet
     }
 
     assert service._next_run_at() == "2026-07-31T10:00:00+00:00"
+
+
+def test_free_games_scheduler_waits_during_startup_grace_window():
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[{"id": "main"}],
+            )
+        )
+    )
+
+    assert not service._due_for_scheduled_run()
+
+    service._started_at = service._started_at - timedelta(minutes=11)
+
+    assert service._due_for_scheduled_run()
 
 
 @pytest.mark.asyncio

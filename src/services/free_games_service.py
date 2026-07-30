@@ -32,6 +32,7 @@ FREE_GAMES_DATA_DIR = DATA_DIR / "free-games"
 SECRET_PLACEHOLDER = "********"
 DEFAULT_FREE_GAMES_IMAGE = "ghcr.io/vogler/free-games-claimer:latest"
 FREE_GAMES_VNC_PROXY_PATH = "/api/free-games/vnc/"
+FREE_GAMES_STARTUP_GRACE_MINUTES = 10
 
 
 class FreeGamesService:
@@ -39,6 +40,7 @@ class FreeGamesService:
 
     def __init__(self, twitch: Twitch) -> None:
         self._twitch = twitch
+        self._started_at = datetime.now().astimezone()
         self._scheduler_task: asyncio.Task[None] | None = None
         self._run_task: asyncio.Task[None] | None = None
         self._update_task: asyncio.Task[None] | None = None
@@ -534,6 +536,9 @@ class FreeGamesService:
         return accounts
 
     def _due_for_scheduled_run(self) -> bool:
+        startup_elapsed = datetime.now().astimezone() - self._started_at
+        if startup_elapsed < timedelta(minutes=FREE_GAMES_STARTUP_GRACE_MINUTES):
+            return False
         if self._run_task is not None and not self._run_task.done():
             return False
         next_run = self._next_run_at()
