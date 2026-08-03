@@ -411,6 +411,7 @@ class EpicFreeGamesModuleAdapter:
         attention = status.get("attention") or {}
         attention_account_id = str(attention.get("account_id") or "").strip()
         attention_required = bool(attention.get("required"))
+        busy = bool(status.get("running") or status.get("updating"))
 
         for action in actions:
             action_id = action.get("id") if isinstance(action, dict) else action
@@ -418,8 +419,15 @@ class EpicFreeGamesModuleAdapter:
                 normalized.append(
                     {
                         "id": "run",
-                        "label": "Start manual run" if attention_required else "Run now",
+                        "label": (
+                            "Running"
+                            if status.get("running")
+                            else "Start manual run"
+                            if attention_required
+                            else "Run now"
+                        ),
                         "params": {"interactive": True, "exclusive": True},
+                        "disabled": busy,
                     }
                 )
             elif action_id == "clear_attention" and attention_required and attention_account_id:
@@ -428,6 +436,7 @@ class EpicFreeGamesModuleAdapter:
                         "id": "clear_attention",
                         "label": "Clear attention",
                         "params": {"account_id": attention_account_id},
+                        "disabled": busy,
                     }
                 )
             elif action_id == "refresh_catalog":

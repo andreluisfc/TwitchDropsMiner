@@ -168,11 +168,13 @@ def test_hub_service_returns_twitch_and_epic_modules():
             "id": "run",
             "label": "Start manual run",
             "params": {"interactive": True, "exclusive": True},
+            "disabled": False,
         },
         {
             "id": "clear_attention",
             "label": "Clear attention",
             "params": {"account_id": "main"},
+            "disabled": False,
         },
         "update",
     ]
