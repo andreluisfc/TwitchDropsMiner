@@ -163,6 +163,19 @@ def test_hub_service_returns_twitch_and_epic_modules():
     assert twitch_module["details"]["update"]["managed_by"] == "app_deploy"
     epic_module = status["modules"][1]
     assert epic_module["status"] == "Idle"
+    assert epic_module["actions"] == [
+        {
+            "id": "run",
+            "label": "Start manual run",
+            "params": {"interactive": True, "exclusive": True},
+        },
+        {
+            "id": "clear_attention",
+            "label": "Clear attention",
+            "params": {"account_id": "main"},
+        },
+        "update",
+    ]
     assert epic_module["metrics"] == {
         "accounts": 2,
         "enabled_accounts": 1,

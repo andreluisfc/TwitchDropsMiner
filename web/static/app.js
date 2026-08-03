@@ -2366,7 +2366,7 @@ function updateHubModules(hub) {
             getHubModuleActions(module).forEach(action => {
                 meta.appendChild(makeElement('button', { type: 'button', class: 'small-btn' }, action.label, button => {
                     button.disabled = action.disabled;
-                    button.addEventListener('click', () => runHubModuleAction(module.id, action.id));
+                    button.addEventListener('click', () => runHubModuleAction(module.id, action.id, action.params));
                 }));
             });
         }));
@@ -2444,10 +2444,12 @@ function getHubModuleActions(module) {
     return (Array.isArray(module.actions) ? module.actions : [])
         .map(action => {
             const id = typeof action === 'string' ? action : action?.id;
-            if (!id || HUB_MODULE_ACTIONS_REQUIRING_PARAMS.has(id)) return null;
+            const params = typeof action === 'object' && action?.params ? action.params : {};
+            if (!id || (HUB_MODULE_ACTIONS_REQUIRING_PARAMS.has(id) && !Object.keys(params).length)) return null;
             return {
                 id,
                 label: typeof action === 'object' && action?.label ? action.label : formatHubModuleActionLabel(id),
+                params,
                 disabled: typeof action === 'object' && action?.disabled !== undefined
                     ? Boolean(action.disabled)
                     : isHubModuleActionDisabled(module, id),
@@ -2456,7 +2458,7 @@ function getHubModuleActions(module) {
         .filter(Boolean);
 }
 
-async function runHubModuleAction(moduleId, action) {
+async function runHubModuleAction(moduleId, action, params = {}) {
     const resultDiv = document.getElementById('hub-action-result');
     if (resultDiv) {
         resultDiv.style.display = 'block';
@@ -2467,7 +2469,7 @@ async function runHubModuleAction(moduleId, action) {
         const response = await fetch(`/api/hub/modules/${encodeURIComponent(moduleId)}/actions/${encodeURIComponent(action)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ params: {} })
+            body: JSON.stringify({ params })
         });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));

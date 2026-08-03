@@ -358,7 +358,10 @@ class EpicFreeGamesModuleAdapter:
             "status": self._free_games_label(status),
             "upstream": metadata.get("upstream", "https://github.com/vogler/free-games-claimer"),
             "update_strategy": metadata.get("update_strategy") or status.get("runner"),
-            "actions": metadata.get("actions", ["run", "run_account", "stop", "update"]),
+            "actions": self._free_games_actions(
+                status,
+                metadata.get("actions", ["run", "run_account", "stop", "update"]),
+            ),
             "metrics": {
                 "accounts": len(accounts),
                 "enabled_accounts": sum(1 for account in accounts if account.get("enabled", True)),
@@ -400,6 +403,40 @@ class EpicFreeGamesModuleAdapter:
         if automation.get("paused"):
             return "Automation paused"
         return "Idle"
+
+    def _free_games_actions(
+        self, status: dict[str, Any], actions: list[str | dict[str, Any]]
+    ) -> list[str | dict[str, Any]]:
+        normalized: list[str | dict[str, Any]] = []
+        attention = status.get("attention") or {}
+        attention_account_id = str(attention.get("account_id") or "").strip()
+        attention_required = bool(attention.get("required"))
+
+        for action in actions:
+            action_id = action.get("id") if isinstance(action, dict) else action
+            if action_id == "run":
+                normalized.append(
+                    {
+                        "id": "run",
+                        "label": "Start manual run" if attention_required else "Run now",
+                        "params": {"interactive": True, "exclusive": True},
+                    }
+                )
+            elif action_id == "clear_attention" and attention_required and attention_account_id:
+                normalized.append(
+                    {
+                        "id": "clear_attention",
+                        "label": "Clear attention",
+                        "params": {"account_id": attention_account_id},
+                    }
+                )
+            elif action_id == "refresh_catalog":
+                normalized.append({"id": "refresh_catalog", "label": "Refresh catalog"})
+            elif action_id in {"run_account", "clear_attention"}:
+                continue
+            else:
+                normalized.append(action)
+        return normalized
 
     def _free_games_update_details(self, status: dict[str, Any]) -> dict[str, Any]:
         return {

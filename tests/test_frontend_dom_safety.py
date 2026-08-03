@@ -23,9 +23,14 @@ def test_hub_module_actions_are_declared_by_modules():
     action_fn = app_source[
         app_source.index("function getHubModuleActions") : app_source.index("async function runHubModuleAction")
     ]
+    runner_fn = app_source[
+        app_source.index("async function runHubModuleAction") : app_source.index("async function runHubAction")
+    ]
 
     assert "module.actions" in action_fn
     assert "module.id ===" not in action_fn
+    assert "action?.params" in action_fn
+    assert "JSON.stringify({ params })" in runner_fn
     assert "run_account" in app_source
 
 
