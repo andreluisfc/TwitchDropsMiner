@@ -490,6 +490,7 @@ class FreeGamesService:
             "image": self._image,
             "schedule_hours": self._schedule_hours,
             "run_timeout_minutes": self._run_timeout_minutes,
+            "manual_run_timeout_minutes": self._manual_run_timeout_minutes,
             "running": bool(self._state.get("running")),
             "updating": bool(self._state.get("updating")),
             "active_account_id": self._state.get("active_account_id"),
@@ -1111,7 +1112,7 @@ class FreeGamesService:
 
         logger.info("Running free games claimer for Epic account %s", account.get("name"))
         env = os.environ.copy()
-        env.update(self._account_env(account, account_dir))
+        env.update(self._account_env(account, account_dir, interactive=interactive))
         process = await asyncio.create_subprocess_exec(
             *command,
             cwd=str(account_dir),
@@ -1122,7 +1123,7 @@ class FreeGamesService:
         timed_out = False
         try:
             output, _ = await asyncio.wait_for(
-                process.communicate(), timeout=self._run_timeout_seconds()
+                process.communicate(), timeout=self._run_timeout_seconds(interactive=interactive)
             )
         except TimeoutError:
             timed_out = True
@@ -1213,7 +1214,7 @@ class FreeGamesService:
             command.extend(["--network", self._docker_network])
         else:
             command.extend(["-p", "127.0.0.1:6080:6080"])
-        env = self._account_env(account, account_dir)
+        env = self._account_env(account, account_dir, interactive=interactive)
         for key in (
             "EG_EMAIL",
             "EG_PASSWORD",
@@ -1285,12 +1286,14 @@ class FreeGamesService:
         output, _ = await process.communicate()
         return process.returncode, output.decode(errors="replace")
 
-    def _account_env(self, account: dict[str, Any], account_dir: Path) -> dict[str, str]:
+    def _account_env(
+        self, account: dict[str, Any], account_dir: Path, *, interactive: bool = True
+    ) -> dict[str, str]:
         env = {
             "BROWSER_DIR": str(account_dir / "browser"),
             "SCREENSHOTS_DIR": str(account_dir / "screenshots"),
-            "LOGIN_TIMEOUT": str(self._claimer_login_timeout_seconds()),
-            "TIMEOUT": str(self._claimer_action_timeout_seconds()),
+            "LOGIN_TIMEOUT": str(self._claimer_login_timeout_seconds(interactive=interactive)),
+            "TIMEOUT": str(self._claimer_action_timeout_seconds(interactive=interactive)),
             "WIDTH": str(FREE_GAMES_BROWSER_WIDTH),
             "HEIGHT": str(FREE_GAMES_BROWSER_HEIGHT),
             "TDM_EPIC_ACCOUNT_ID": str(account.get("id") or ""),
@@ -1311,11 +1314,11 @@ class FreeGamesService:
             env["TDM_EPIC_CLAIM_TARGETS"] = json.dumps(claim_targets, separators=(",", ":"))
         return env
 
-    def _claimer_login_timeout_seconds(self) -> int:
-        return max(180, self._run_timeout_seconds() - 60)
+    def _claimer_login_timeout_seconds(self, *, interactive: bool = True) -> int:
+        return max(180, self._run_timeout_seconds(interactive=interactive) - 60)
 
-    def _claimer_action_timeout_seconds(self) -> int:
-        return max(60, min(180, self._claimer_login_timeout_seconds()))
+    def _claimer_action_timeout_seconds(self, *, interactive: bool = True) -> int:
+        return max(60, min(180, self._claimer_login_timeout_seconds(interactive=interactive)))
 
     def _account_status(self, account: dict[str, Any]) -> dict[str, Any]:
         account_id = str(account.get("id"))
@@ -1810,19 +1813,33 @@ class FreeGamesService:
             int(getattr(self._twitch.settings, "free_games_run_timeout_minutes", 15) or 15),
         )
 
-    def _run_timeout_seconds(self) -> int:
-        return self._run_timeout_minutes * 60
+    @property
+    def _manual_run_timeout_minutes(self) -> int:
+        configured = int(
+            getattr(
+                self._twitch.settings,
+                "free_games_manual_run_timeout_minutes",
+                120,
+            )
+            or 120
+        )
+        return max(self._run_timeout_minutes, configured)
+
+    def _run_timeout_seconds(self, *, interactive: bool = False) -> int:
+        minutes = self._manual_run_timeout_minutes if interactive else self._run_timeout_minutes
+        return minutes * 60
 
     def _remaining_run_timeout_seconds(self) -> int:
+        interactive = bool(self._state.get("active_interactive"))
         started_at = self._state.get("last_run_started_at")
         if not started_at:
-            return self._run_timeout_seconds()
+            return self._run_timeout_seconds(interactive=interactive)
         try:
             started = datetime.fromisoformat(str(started_at))
         except ValueError:
-            return self._run_timeout_seconds()
+            return self._run_timeout_seconds(interactive=interactive)
         elapsed = (datetime.now().astimezone() - started).total_seconds()
-        return max(1, int(self._run_timeout_seconds() - elapsed))
+        return max(1, int(self._run_timeout_seconds(interactive=interactive) - elapsed))
 
     @property
     def _accounts(self) -> list[dict[str, Any]]:
@@ -1961,7 +1978,11 @@ class FreeGamesService:
         if stopped:
             return "Stopped by user."
         if timed_out:
-            return f"Timed out after {self._run_timeout_minutes} minute(s)."
+            return (
+                f"Timed out after {self._manual_run_timeout_minutes} minute(s)."
+                if self._state.get("active_interactive")
+                else f"Timed out after {self._run_timeout_minutes} minute(s)."
+            )
         return f"Exited with {returncode}"
 
     async def _adopt_active_docker_run_if_needed(self) -> bool:

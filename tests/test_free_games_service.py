@@ -225,6 +225,7 @@ def test_free_games_status_exposes_module_metadata_and_account_lookup():
     assert status["module"]["upstream"] == "https://github.com/vogler/free-games-claimer"
     assert "run_account" in status["module"]["actions"]
     assert status["run_timeout_minutes"] == 15
+    assert status["manual_run_timeout_minutes"] == 120
     assert status["vnc"] == {
         "enabled": True,
         "url": None,
@@ -755,6 +756,7 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
         command = service._docker_command(account, temp_path)
         background_command = service._docker_command(account, temp_path, interactive=False)
         env = service._account_env(account, temp_path)
+        background_env = service._account_env(account, temp_path, interactive=False)
 
     assert "secret-password" not in command
     assert "otp-secret" not in command
@@ -762,7 +764,8 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
     assert "vnc-secret" not in command
     assert env["EG_PASSWORD"] == "secret-password"
     assert env["VNC_PASSWORD"] == "vnc-secret"
-    assert env["LOGIN_TIMEOUT"] == "840"
+    assert env["LOGIN_TIMEOUT"] == "7140"
+    assert background_env["LOGIN_TIMEOUT"] == "840"
     assert env["TIMEOUT"] == "180"
     assert env["WIDTH"] == "800"
     assert env["HEIGHT"] == "600"
@@ -1230,7 +1233,7 @@ async def test_free_games_run_account_times_out_and_stops_container(monkeypatch)
             )
         )
     )
-    service._run_timeout_seconds = lambda: 0.01
+    service._run_timeout_seconds = lambda **_: 0.01
     service._prepare_docker_container = AsyncMock(return_value=True)
 
     async def fake_docker_output(*command):

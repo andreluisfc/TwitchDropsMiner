@@ -85,6 +85,7 @@ default_settings = {
     "free_games_claimer_path": "",
     "free_games_schedule_hours": 24,
     "free_games_run_timeout_minutes": 15,
+    "free_games_manual_run_timeout_minutes": 120,
     "free_games_accounts": [],
 }
 
@@ -112,6 +113,7 @@ class Settings:
     free_games_claimer_path: str
     free_games_schedule_hours: int
     free_games_run_timeout_minutes: int
+    free_games_manual_run_timeout_minutes: int
     free_games_accounts: list[FreeGamesAccount]
 
     def __init__(self):

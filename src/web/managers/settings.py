@@ -176,6 +176,11 @@ class SettingsManager:
             settings_data.get("free_games_run_timeout_minutes"),
             True,
         )
+        should_trigger_update |= self.check_and_update_setting(
+            "free_games_manual_run_timeout_minutes",
+            settings_data.get("free_games_manual_run_timeout_minutes"),
+            True,
+        )
         if "free_games_accounts" in settings_data:
             accounts = self._merge_free_games_accounts(settings_data.get("free_games_accounts"))
             if getattr(self._settings, "free_games_accounts", None) != accounts:
