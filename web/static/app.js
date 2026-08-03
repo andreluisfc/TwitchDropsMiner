@@ -2117,6 +2117,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hub-update-all-btn').addEventListener('click', () => runHubAction('update_all'));
     document.getElementById('free-games-run-btn').addEventListener('click', () => runFreeGamesNow());
     document.getElementById('free-games-stop-btn').addEventListener('click', stopFreeGamesRun);
+    document.getElementById('free-games-refresh-catalog-btn').addEventListener('click', refreshFreeGamesCatalog);
     document.getElementById('free-games-update-btn').addEventListener('click', updateFreeGamesRunner);
     document.getElementById('free-games-add-account-btn').addEventListener('click', addFreeGamesAccount);
 
@@ -2514,6 +2515,7 @@ function updateFreeGamesStatus(status) {
     const runButton = document.getElementById('free-games-run-btn');
     const stopButton = document.getElementById('free-games-stop-btn');
     const updateButton = document.getElementById('free-games-update-btn');
+    const refreshCatalogButton = document.getElementById('free-games-refresh-catalog-btn');
     if (!container) return;
 
     container.innerHTML = '';
@@ -2525,6 +2527,9 @@ function updateFreeGamesStatus(status) {
     }
     if (updateButton) {
         updateButton.disabled = Boolean(status?.running || status?.updating);
+    }
+    if (refreshCatalogButton) {
+        refreshCatalogButton.disabled = Boolean(status?.catalog?.refreshing);
     }
 
     if (!status?.enabled) {
@@ -2549,6 +2554,13 @@ function updateFreeGamesStatus(status) {
         }
         if (status.run_timeout_minutes) {
             el.appendChild(makeElement('span', {}, `Timeout: ${status.run_timeout_minutes} min`));
+        }
+        const catalog = status.catalog || {};
+        if (catalog.last_refresh_finished_at) {
+            el.appendChild(makeElement('span', {}, `Catalog: ${formatLocalDateTime(catalog.last_refresh_finished_at)}`));
+        }
+        if (catalog.last_error) {
+            el.appendChild(makeElement('span', { class: 'error-text' }, `Catalog: ${catalog.last_error}`));
         }
         if (status.source?.revision) {
             const label = `Revision: ${shortRevision(status.source.revision)}`;
@@ -2582,6 +2594,7 @@ function updateFreeGamesStatus(status) {
         }
     });
     container.appendChild(summary);
+    appendFreeGamesCatalog(container, status.catalog || {});
 
     const accounts = status.accounts || [];
     if (!accounts.length) {
@@ -2649,6 +2662,56 @@ function updateFreeGamesStatus(status) {
     container.appendChild(grid);
 }
 
+function appendFreeGamesCatalog(container, catalog) {
+    const current = Array.isArray(catalog.current) ? catalog.current : [];
+    const upcoming = Array.isArray(catalog.upcoming) ? catalog.upcoming : [];
+    const section = makeElement('div', { class: 'free-games-catalog' }, '', el => {
+        el.appendChild(makeElement('h3', {}, 'Epic catalog'));
+        if (catalog.refreshing) {
+            el.appendChild(makeElement('p', { class: 'muted-text' }, 'Refreshing freebies catalog...'));
+        }
+        if (!current.length && !upcoming.length && !catalog.last_error) {
+            el.appendChild(makeElement('p', { class: 'muted-text' }, 'No catalog data yet. Refresh freebies to load current Epic offers.'));
+        }
+        appendFreeGamesCatalogGroup(el, 'Free now', current, 'Ends');
+        appendFreeGamesCatalogGroup(el, 'Upcoming freebies', upcoming, 'Starts');
+    });
+    container.appendChild(section);
+}
+
+function appendFreeGamesCatalogGroup(container, title, games, dateLabel) {
+    if (!games.length) return;
+    container.appendChild(makeElement('h4', {}, title));
+    const grid = makeElement('div', { class: 'free-games-catalog-grid' });
+    games.slice(0, 6).forEach(game => {
+        const item = makeElement('div', { class: 'free-games-catalog-item' }, '', el => {
+            if (game.image_url) {
+                el.appendChild(makeImageElement(game.image_url, game.title || 'Epic game', 'free-games-catalog-image'));
+            }
+            el.appendChild(makeElement('strong', {}, game.title || game.id || 'Unknown game'));
+            const dateValue = dateLabel === 'Ends' ? game.end_at : game.start_at;
+            if (dateValue) {
+                el.appendChild(makeElement('span', { class: 'muted-text' }, `${dateLabel}: ${formatLocalDateTime(dateValue)}`));
+            }
+            if (game.original_price) {
+                el.appendChild(makeElement('span', { class: 'muted-text' }, `Price: ${game.original_price}`));
+            }
+            const links = makeElement('div', { class: 'free-games-catalog-links' });
+            if (game.url) {
+                links.appendChild(makeElement('a', { href: game.url, target: '_blank', rel: 'noopener noreferrer' }, 'Store'));
+            }
+            if (game.checkout_url) {
+                links.appendChild(makeElement('a', { href: game.checkout_url, target: '_blank', rel: 'noopener noreferrer' }, 'Checkout'));
+            }
+            if (links.childNodes.length) {
+                el.appendChild(links);
+            }
+        });
+        grid.appendChild(item);
+    });
+    container.appendChild(grid);
+}
+
 async function loadFreeGamesLog(kind, accountId = null) {
     const resultDiv = document.getElementById('free-games-action-result');
     if (resultDiv) {
@@ -2710,6 +2773,41 @@ async function clearFreeGamesAttention(accountId) {
             resultDiv.className = 'verify-result error';
             resultDiv.textContent = error.message;
         }
+    }
+}
+
+async function refreshFreeGamesCatalog() {
+    const resultDiv = document.getElementById('free-games-action-result');
+    const button = document.getElementById('free-games-refresh-catalog-btn');
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'verify-result loading';
+        resultDiv.textContent = 'Refreshing Epic freebies catalog...';
+    }
+    if (button) button.disabled = true;
+
+    try {
+        const response = await fetch('/api/hub/modules/free-games-epic/actions/refresh_catalog', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ params: {} })
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'Could not refresh Epic catalog');
+        }
+        if (resultDiv) {
+            resultDiv.className = 'verify-result success';
+            resultDiv.textContent = 'Epic catalog refresh started.';
+        }
+        fetchFreeGamesStatus();
+        fetchHubModules();
+    } catch (error) {
+        if (resultDiv) {
+            resultDiv.className = 'verify-result error';
+            resultDiv.textContent = error.message;
+        }
+        if (button) button.disabled = false;
     }
 }
 

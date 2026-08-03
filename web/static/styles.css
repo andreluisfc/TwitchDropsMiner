@@ -311,6 +311,52 @@ header h1 {
     gap: 10px;
 }
 
+.free-games-catalog {
+    display: grid;
+    gap: 8px;
+}
+
+.free-games-catalog h3,
+.free-games-catalog h4 {
+    margin: 0;
+}
+
+.free-games-catalog h4 {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.free-games-catalog-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.free-games-catalog-item {
+    display: grid;
+    gap: 6px;
+    align-content: start;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px;
+    background: var(--bg-secondary);
+    min-width: 0;
+}
+
+.free-games-catalog-image {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+}
+
+.free-games-catalog-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .free-games-account-card {
     border: 1px solid var(--border-color);
     border-radius: 6px;

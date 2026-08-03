@@ -264,6 +264,15 @@ class EpicFreeGamesModuleAdapter:
                 }
             return {"success": True, "module_id": "free-games-epic", "action": action}
 
+        if action == "refresh_catalog":
+            if not free_games.refresh_catalog():
+                return {
+                    "success": False,
+                    "status_code": 409,
+                    "detail": "Epic catalog refresh is already running",
+                }
+            return {"success": True, "module_id": "free-games-epic", "action": action}
+
         if action == "clear_attention":
             account_id = str(params.get("account_id") or "").strip()
             if not account_id:
@@ -338,6 +347,7 @@ class EpicFreeGamesModuleAdapter:
         metadata = status.get("module") or {}
         accounts = status.get("accounts") or []
         automation = status.get("automation") or {}
+        catalog = status.get("catalog") or {}
         return {
             "id": metadata.get("id", "free-games-epic"),
             "name": metadata.get("name", "Epic Freebies"),
@@ -356,9 +366,12 @@ class EpicFreeGamesModuleAdapter:
                 "claimed_games": sum(
                     len(account.get("claimed_games") or []) for account in accounts
                 ),
+                "current_freebies": len(catalog.get("current") or []),
+                "upcoming_freebies": len(catalog.get("upcoming") or []),
             },
             "details": {
                 "image": status.get("image"),
+                "catalog": catalog,
                 "source": status.get("source"),
                 "update": self._free_games_update_details(status),
                 "attention": status.get("attention"),

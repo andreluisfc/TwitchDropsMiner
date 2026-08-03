@@ -87,6 +87,10 @@ def test_hub_service_returns_twitch_and_epic_modules():
                 "running": False,
                 "updating": False,
                 "runner": "docker",
+                "catalog": {
+                    "current": [{"title": "OTXO"}],
+                    "upcoming": [{"title": "Beacon Pines"}],
+                },
                 "source": {
                     "repository": "https://github.com/vogler/free-games-claimer",
                     "revision": "99c1f05302aeece21a628797cfdffb561ee38956",
@@ -159,10 +163,13 @@ def test_hub_service_returns_twitch_and_epic_modules():
         "enabled_accounts": 1,
         "scheduled_accounts": 1,
         "claimed_games": 1,
+        "current_freebies": 1,
+        "upcoming_freebies": 1,
     }
     assert epic_module["details"]["source"]["revision"] == (
         "99c1f05302aeece21a628797cfdffb561ee38956"
     )
+    assert epic_module["details"]["catalog"]["current"][0]["title"] == "OTXO"
     assert epic_module["details"]["update"] == {
         "strategy": "docker",
         "managed_by": "external_runner",

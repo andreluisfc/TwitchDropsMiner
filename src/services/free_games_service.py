@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import aiohttp
+
 from src.config import DATA_DIR
 from src.utils import json_load, json_save
 
@@ -40,6 +42,9 @@ FREE_GAMES_DOCKER_CPUS = "0.30"
 FREE_GAMES_DOCKER_MEMORY = "512m"
 FREE_GAMES_MIN_AVAILABLE_MEMORY_MB = 480
 FREE_GAMES_EXCLUSIVE_SETTLE_SECONDS = 15
+FREE_GAMES_CATALOG_REFRESH_HOURS = 6
+EPIC_CATALOG_URL = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
+EPIC_STORE_BASE_URL = "https://store.epicgames.com"
 
 
 class FreeGamesService:
@@ -51,6 +56,8 @@ class FreeGamesService:
         self._scheduler_task: asyncio.Task[None] | None = None
         self._run_task: asyncio.Task[None] | None = None
         self._update_task: asyncio.Task[None] | None = None
+        self._catalog_task: asyncio.Task[None] | None = None
+        self._catalog_refresh_task: asyncio.Task[None] | None = None
         self._stop_task: asyncio.Task[None] | None = None
         self._stop_requested = False
         self._state = self._load_state()
@@ -65,6 +72,8 @@ class FreeGamesService:
                     state[key] = loaded[key]
         if not isinstance(state.get("accounts"), dict):
             state["accounts"] = {}
+        if not isinstance(state.get("catalog"), dict):
+            state["catalog"] = self._default_catalog_state()
         return state
 
     def _default_state(self) -> dict[str, Any]:
@@ -81,6 +90,20 @@ class FreeGamesService:
             "last_update_success": None,
             "last_error": None,
             "accounts": {},
+            "catalog": self._default_catalog_state(),
+        }
+
+    def _default_catalog_state(self) -> dict[str, Any]:
+        return {
+            "refreshing": False,
+            "last_refresh_started_at": None,
+            "last_refresh_finished_at": None,
+            "last_refresh_success": None,
+            "last_error": None,
+            "locale": self._catalog_locale(),
+            "country": self._catalog_country(),
+            "current": [],
+            "upcoming": [],
         }
 
     async def start(self) -> None:
@@ -88,15 +111,26 @@ class FreeGamesService:
         await self._adopt_active_docker_run_if_needed()
         if self._scheduler_task is None or self._scheduler_task.done():
             self._scheduler_task = self._create_task(self._scheduler_loop())
+        if self._catalog_task is None or self._catalog_task.done():
+            self._catalog_task = self._create_task(self._catalog_loop())
 
     async def stop(self) -> None:
-        for task in (self._scheduler_task, self._run_task, self._update_task, self._stop_task):
+        for task in (
+            self._scheduler_task,
+            self._run_task,
+            self._update_task,
+            self._catalog_task,
+            self._catalog_refresh_task,
+            self._stop_task,
+        ):
             if task is not None:
                 task.cancel()
                 with suppress(asyncio.CancelledError):
                     await task
         self._scheduler_task = None
         self._run_task = None
+        self._catalog_task = None
+        self._catalog_refresh_task = None
         self._stop_task = None
 
     def on_settings_changed(self) -> None:
@@ -110,9 +144,17 @@ class FreeGamesService:
                 "name": "Epic Freebies",
                 "upstream": "https://github.com/vogler/free-games-claimer",
                 "update_strategy": self._runner,
-                "actions": ["run", "run_account", "clear_attention", "stop", "update"],
+                "actions": [
+                    "run",
+                    "run_account",
+                    "clear_attention",
+                    "stop",
+                    "update",
+                    "refresh_catalog",
+                ],
             },
             "source": self._source_info(),
+            "catalog": self._catalog_status(),
             "attention": self._attention_info(),
             "enabled": self._enabled,
             "runner": self._runner,
@@ -172,6 +214,12 @@ class FreeGamesService:
             return False
         self._update_task = self._create_task(self._update_runner())
         return self._update_task is not None
+
+    def refresh_catalog(self) -> bool:
+        if self._catalog_refresh_task is not None and not self._catalog_refresh_task.done():
+            return False
+        self._catalog_refresh_task = self._create_task(self._refresh_catalog())
+        return self._catalog_refresh_task is not None
 
     def _resources_allow_run(self) -> bool:
         if self._runner != "docker":
@@ -268,6 +316,254 @@ class FreeGamesService:
             if self._enabled and self._due_for_scheduled_run():
                 self._run_scheduled_now()
             await asyncio.sleep(60)
+
+    async def _catalog_loop(self) -> None:
+        while True:
+            if self._enabled and self._catalog_refresh_due():
+                await self._refresh_catalog()
+            await asyncio.sleep(300)
+
+    async def _refresh_catalog(self) -> None:
+        catalog = self._state.setdefault("catalog", self._default_catalog_state())
+        catalog.update(
+            {
+                "refreshing": True,
+                "last_refresh_started_at": self._now(),
+                "last_refresh_finished_at": None,
+                "last_refresh_success": None,
+                "last_error": None,
+                "locale": self._catalog_locale(),
+                "country": self._catalog_country(),
+            }
+        )
+        self._save_state()
+
+        success = False
+        try:
+            payload = await self._fetch_epic_catalog_payload()
+            parsed = self._parse_epic_catalog(payload)
+            catalog.update(parsed)
+            success = True
+        except Exception as exc:
+            catalog["last_error"] = str(exc)
+            logger.warning("Epic freebies catalog refresh failed", exc_info=True)
+        finally:
+            catalog.update(
+                {
+                    "refreshing": False,
+                    "last_refresh_finished_at": self._now(),
+                    "last_refresh_success": success,
+                }
+            )
+            self._save_state()
+            self._twitch.telegram.queue_status_update()
+
+    async def _fetch_epic_catalog_payload(self) -> dict[str, Any]:
+        params = {
+            "locale": self._catalog_locale(),
+            "country": self._catalog_country(),
+            "allowCountries": self._catalog_country(),
+        }
+        timeout = aiohttp.ClientTimeout(total=20)
+        headers = {"User-Agent": "TDM-Hub/1.0"}
+        async with (
+            aiohttp.ClientSession(timeout=timeout, headers=headers) as session,
+            session.get(EPIC_CATALOG_URL, params=params) as response,
+        ):
+            response.raise_for_status()
+            data = await response.json(content_type=None)
+        if not isinstance(data, dict):
+            raise RuntimeError("Epic catalog response was not a JSON object.")
+        return data
+
+    def _parse_epic_catalog(self, payload: dict[str, Any]) -> dict[str, Any]:
+        elements = (
+            payload.get("data", {})
+            .get("Catalog", {})
+            .get("searchStore", {})
+            .get("elements", [])
+        )
+        if not isinstance(elements, list):
+            raise RuntimeError("Epic catalog response did not include searchStore elements.")
+
+        current: list[dict[str, Any]] = []
+        upcoming: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str, str]] = set()
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+            promotions = element.get("promotions") or {}
+            if not isinstance(promotions, dict):
+                continue
+            for offer in self._iter_free_promotional_offers(
+                promotions.get("promotionalOffers")
+            ):
+                item = self._catalog_item(element, offer, "current")
+                key = self._catalog_item_key(item)
+                if key not in seen:
+                    seen.add(key)
+                    current.append(item)
+            for offer in self._iter_free_promotional_offers(
+                promotions.get("upcomingPromotionalOffers")
+            ):
+                item = self._catalog_item(element, offer, "upcoming")
+                key = self._catalog_item_key(item)
+                if key not in seen:
+                    seen.add(key)
+                    upcoming.append(item)
+
+        current.sort(key=lambda item: str(item.get("end_at") or ""))
+        upcoming.sort(key=lambda item: str(item.get("start_at") or ""))
+        return {
+            "current": current,
+            "upcoming": upcoming,
+            "last_error": None,
+            "locale": self._catalog_locale(),
+            "country": self._catalog_country(),
+        }
+
+    def _iter_free_promotional_offers(self, groups: Any) -> list[dict[str, Any]]:
+        if not isinstance(groups, list):
+            return []
+        free_offers: list[dict[str, Any]] = []
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            for offer in group.get("promotionalOffers") or []:
+                if not isinstance(offer, dict):
+                    continue
+                discount = offer.get("discountSetting") or {}
+                discount_percentage = discount.get("discountPercentage")
+                if (
+                    isinstance(discount, dict)
+                    and discount.get("discountType") == "PERCENTAGE"
+                    and int(discount_percentage if discount_percentage is not None else -1) == 0
+                ):
+                    free_offers.append(offer)
+        return free_offers
+
+    def _catalog_item(
+        self, element: dict[str, Any], offer: dict[str, Any], status: str
+    ) -> dict[str, Any]:
+        namespace = str(element.get("namespace") or "")
+        offer_id = str(element.get("id") or "")
+        page_slug = self._epic_page_slug(element)
+        return {
+            "id": offer_id,
+            "namespace": namespace,
+            "title": element.get("title") or offer_id,
+            "status": status,
+            "start_at": offer.get("startDate"),
+            "end_at": offer.get("endDate"),
+            "url": self._epic_store_url(page_slug),
+            "checkout_url": self._epic_checkout_url(namespace, offer_id),
+            "image_url": self._epic_image_url(element),
+            "original_price": self._epic_formatted_price(element, "originalPrice"),
+            "discount_price": self._epic_formatted_price(element, "discountPrice"),
+        }
+
+    def _catalog_item_key(self, item: dict[str, Any]) -> tuple[str, str, str, str]:
+        return (
+            str(item.get("id") or ""),
+            str(item.get("status") or ""),
+            str(item.get("start_at") or ""),
+            str(item.get("end_at") or ""),
+        )
+
+    def _epic_page_slug(self, element: dict[str, Any]) -> str:
+        mappings = element.get("offerMappings") or []
+        if isinstance(mappings, list):
+            for mapping in mappings:
+                if isinstance(mapping, dict) and mapping.get("pageSlug"):
+                    return str(mapping["pageSlug"]).strip("/")
+        product_slug = str(element.get("productSlug") or "").strip("/")
+        if product_slug:
+            return product_slug.split("/")[0]
+        return str(element.get("urlSlug") or element.get("id") or "").strip("/")
+
+    def _epic_store_url(self, page_slug: str) -> str:
+        if not page_slug:
+            return ""
+        return f"{EPIC_STORE_BASE_URL}/{self._catalog_locale()}/p/{page_slug}"
+
+    def _epic_checkout_url(self, namespace: str, offer_id: str) -> str:
+        if not namespace or not offer_id:
+            return ""
+        return (
+            f"{EPIC_STORE_BASE_URL}/{self._catalog_locale()}/purchase"
+            f"?offers=1-{namespace}-{offer_id}"
+        )
+
+    def _epic_image_url(self, element: dict[str, Any]) -> str:
+        images = element.get("keyImages") or []
+        preferred_types = ("OfferImageWide", "Thumbnail", "OfferImageTall")
+        if not isinstance(images, list):
+            return ""
+        for image_type in preferred_types:
+            for image in images:
+                if (
+                    isinstance(image, dict)
+                    and image.get("type") == image_type
+                    and image.get("url")
+                ):
+                    return str(image["url"])
+        for image in images:
+            if isinstance(image, dict) and image.get("url"):
+                return str(image["url"])
+        return ""
+
+    def _epic_formatted_price(self, element: dict[str, Any], key: str) -> str:
+        price = (
+            element.get("price", {})
+            .get("totalPrice", {})
+            .get("fmtPrice", {})
+            .get(key)
+        )
+        return str(price or "")
+
+    def _catalog_status(self) -> dict[str, Any]:
+        catalog = self._state.get("catalog")
+        if not isinstance(catalog, dict):
+            catalog = self._default_catalog_state()
+        status = self._default_catalog_state()
+        status.update(catalog)
+        status["current"] = [
+            item for item in status.get("current", []) if isinstance(item, dict)
+        ]
+        status["upcoming"] = [
+            item for item in status.get("upcoming", []) if isinstance(item, dict)
+        ]
+        return status
+
+    def _catalog_refresh_due(self) -> bool:
+        catalog = self._catalog_status()
+        if catalog.get("refreshing"):
+            return False
+        if self._catalog_refresh_task is not None and not self._catalog_refresh_task.done():
+            return False
+        last_refresh = catalog.get("last_refresh_finished_at")
+        if not last_refresh:
+            return True
+        try:
+            refreshed_at = datetime.fromisoformat(str(last_refresh))
+        except ValueError:
+            return True
+        return datetime.now().astimezone() - refreshed_at >= timedelta(
+            hours=self._catalog_refresh_hours()
+        )
+
+    def _catalog_refresh_hours(self) -> int:
+        raw_value = os.getenv("FREE_GAMES_CATALOG_REFRESH_HOURS", "").strip()
+        if raw_value:
+            with suppress(ValueError):
+                return max(1, int(raw_value))
+        return FREE_GAMES_CATALOG_REFRESH_HOURS
+
+    def _catalog_locale(self) -> str:
+        return str(os.getenv("EPIC_CATALOG_LOCALE") or "pt-BR").strip() or "pt-BR"
+
+    def _catalog_country(self) -> str:
+        return str(os.getenv("EPIC_CATALOG_COUNTRY") or "BR").strip().upper() or "BR"
 
     def _run_scheduled_now(self) -> bool:
         if self._run_task is not None and not self._run_task.done():

@@ -58,6 +58,111 @@ def test_free_games_service_reads_epic_claims(monkeypatch):
         assert status["accounts"][0]["failed_games"][0]["title"] == "Game B"
 
 
+def test_free_games_service_parses_epic_catalog_freebies(monkeypatch):
+    monkeypatch.setenv("EPIC_CATALOG_LOCALE", "pt-BR")
+    monkeypatch.setenv("EPIC_CATALOG_COUNTRY", "BR")
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[],
+            )
+        )
+    )
+
+    parsed = service._parse_epic_catalog(
+        {
+            "data": {
+                "Catalog": {
+                    "searchStore": {
+                        "elements": [
+                            {
+                                "id": "offer-current",
+                                "namespace": "namespace-current",
+                                "title": "Current Free Game",
+                                "offerMappings": [
+                                    {
+                                        "pageSlug": "current-free-game",
+                                        "pageType": "productHome",
+                                    }
+                                ],
+                                "keyImages": [
+                                    {
+                                        "type": "OfferImageWide",
+                                        "url": "https://cdn.example/current.jpg",
+                                    }
+                                ],
+                                "price": {
+                                    "totalPrice": {
+                                        "fmtPrice": {
+                                            "originalPrice": "R$ 10,00",
+                                            "discountPrice": "0",
+                                        }
+                                    }
+                                },
+                                "promotions": {
+                                    "promotionalOffers": [
+                                        {
+                                            "promotionalOffers": [
+                                                {
+                                                    "startDate": "2026-07-30T15:00:00.000Z",
+                                                    "endDate": "2026-08-06T15:00:00.000Z",
+                                                    "discountSetting": {
+                                                        "discountType": "PERCENTAGE",
+                                                        "discountPercentage": 0,
+                                                    },
+                                                }
+                                            ]
+                                        }
+                                    ],
+                                    "upcomingPromotionalOffers": [],
+                                },
+                            },
+                            {
+                                "id": "offer-upcoming",
+                                "namespace": "namespace-upcoming",
+                                "title": "Upcoming Free Game",
+                                "productSlug": "upcoming-free-game/home",
+                                "promotions": {
+                                    "promotionalOffers": [],
+                                    "upcomingPromotionalOffers": [
+                                        {
+                                            "promotionalOffers": [
+                                                {
+                                                    "startDate": "2026-08-06T15:00:00.000Z",
+                                                    "endDate": "2026-08-13T15:00:00.000Z",
+                                                    "discountSetting": {
+                                                        "discountType": "PERCENTAGE",
+                                                        "discountPercentage": 0,
+                                                    },
+                                                }
+                                            ]
+                                        }
+                                    ],
+                                },
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    )
+
+    assert parsed["current"][0]["title"] == "Current Free Game"
+    assert parsed["current"][0]["url"] == "https://store.epicgames.com/pt-BR/p/current-free-game"
+    assert parsed["current"][0]["checkout_url"] == (
+        "https://store.epicgames.com/pt-BR/purchase"
+        "?offers=1-namespace-current-offer-current"
+    )
+    assert parsed["current"][0]["image_url"] == "https://cdn.example/current.jpg"
+    assert parsed["current"][0]["original_price"] == "R$ 10,00"
+    assert parsed["upcoming"][0]["title"] == "Upcoming Free Game"
+    assert parsed["upcoming"][0]["url"] == "https://store.epicgames.com/pt-BR/p/upcoming-free-game"
+
+
 def test_free_games_status_exposes_module_metadata_and_account_lookup():
     settings = SimpleNamespace(
         free_games_enabled=True,

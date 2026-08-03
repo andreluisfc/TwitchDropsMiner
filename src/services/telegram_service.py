@@ -33,6 +33,7 @@ RECENT_CLAIMED_LIMIT = 12
 CALLBACK_FREE_GAMES_RUN = "free_games:run"
 CALLBACK_FREE_GAMES_STOP = "free_games:stop"
 CALLBACK_FREE_GAMES_UPDATE = "free_games:update"
+CALLBACK_FREE_GAMES_REFRESH_CATALOG = "free_games:refresh_catalog"
 CALLBACK_HUB_UPDATE_ALL = "hub:update_all"
 CALLBACK_STATUS_REFRESH = "status:refresh"
 CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX = "fg:r:"
@@ -207,7 +208,13 @@ class TelegramService:
             [
                 {"text": "🔄 Run Epic", "callback_data": CALLBACK_FREE_GAMES_RUN},
                 {"text": "⬆️ Update modules", "callback_data": CALLBACK_HUB_UPDATE_ALL},
-            ]
+            ],
+            [
+                {
+                    "text": "🎁 Refresh freebies",
+                    "callback_data": CALLBACK_FREE_GAMES_REFRESH_CATALOG,
+                }
+            ],
         ]
         free_games = getattr(self._twitch, "free_games", None)
         if free_games is not None:
@@ -422,6 +429,8 @@ class TelegramService:
         if attention.get("required") and attention.get("message"):
             lines.append(f"🚨 {self._html(attention['message'])}")
 
+        lines.extend(self._format_epic_catalog_lines(status.get("catalog") or {}))
+
         accounts = status.get("accounts") or []
         if not accounts:
             lines.append("No Epic accounts configured.")
@@ -452,6 +461,40 @@ class TelegramService:
             if account_automation.get("blocked_reason"):
                 reason = str(account_automation["blocked_reason"]).replace("_", " ")
                 lines.append(f"  • ⏸ Automation blocked: {self._html(reason)}")
+        return lines
+
+    def _format_epic_catalog_lines(self, catalog: dict[str, Any]) -> list[str]:
+        lines: list[str] = []
+        if catalog.get("refreshing"):
+            lines.append("🎁 Refreshing Epic catalog...")
+        elif catalog.get("last_error"):
+            lines.append(f"🎁 Catalog error: {self._html(catalog['last_error'])}")
+        refreshed_at = catalog.get("last_refresh_finished_at")
+        if refreshed_at:
+            lines.append(f"🎁 Catalog updated: {self._html(self._format_datetime(refreshed_at))}")
+
+        current = [item for item in catalog.get("current", []) if isinstance(item, dict)]
+        upcoming = [item for item in catalog.get("upcoming", []) if isinstance(item, dict)]
+        if current:
+            lines.append("🆓 <b>Free now</b>")
+            for item in current[:4]:
+                title = self._game_campaign_link(item.get("title") or "Unknown game", item.get("url"))
+                end_at = self._format_datetime(item["end_at"]) if item.get("end_at") else "unknown"
+                checkout = item.get("checkout_url")
+                suffix = (
+                    f" · <a href=\"{self._html(checkout)}\">checkout</a>"
+                    if checkout
+                    else ""
+                )
+                lines.append(f"  • {title} · ends {self._html(end_at)}{suffix}")
+        if upcoming:
+            lines.append("🔜 <b>Upcoming free</b>")
+            for item in upcoming[:3]:
+                title = self._game_campaign_link(item.get("title") or "Unknown game", item.get("url"))
+                start_at = self._format_datetime(item["start_at"]) if item.get("start_at") else "unknown"
+                lines.append(f"  • {title} · starts {self._html(start_at)}")
+        if not current and not upcoming and not catalog.get("last_error"):
+            lines.append("🎁 Epic catalog not loaded yet.")
         return lines
 
     def _format_datetime(self, value: object) -> str:
@@ -630,6 +673,18 @@ class TelegramService:
                 self.queue_status_update(immediate=True)
             else:
                 await self._answer_callback(callback_id, "Epic module update could not be started.")
+            return
+
+        if data == CALLBACK_FREE_GAMES_REFRESH_CATALOG:
+            status = free_games.get_status()
+            catalog = status.get("catalog") or {}
+            if catalog.get("refreshing"):
+                await self._answer_callback(callback_id, "Epic catalog refresh is already running.")
+            elif hub.run_action("free-games-epic", "refresh_catalog").get("success"):
+                await self._answer_callback(callback_id, "Epic freebies refresh started.")
+                self.queue_status_update(immediate=True)
+            else:
+                await self._answer_callback(callback_id, "Epic freebies could not be refreshed.")
 
     async def _handle_free_games_account_callback(
         self, callback_id: str, data: str, free_games: Any, hub: Any
