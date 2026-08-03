@@ -114,8 +114,11 @@ async function clickIfVisible(scope, selector, timeout = 1500) {
 }
 
 async function ensureSignedIn(page) {
+  log('Checking Epic login state.');
   await page.goto(URL_CLAIM, { waitUntil: 'domcontentloaded' });
-  if (await page.locator('egs-navigation').getAttribute('isloggedin').catch(() => null) === 'true') {
+  const initialSignedIn = await page.locator('egs-navigation').getAttribute('isloggedin').catch(() => null);
+  log('Epic login state:', initialSignedIn || 'unknown', page.url());
+  if (initialSignedIn === 'true') {
     return;
   }
   if (!cfg.eg_email || !cfg.eg_password) {
@@ -124,12 +127,16 @@ async function ensureSignedIn(page) {
 
   log('Signing in with configured Epic account.');
   await page.goto(`${URL_LOGIN}&redirectUrl=${encodeURIComponent(URL_CLAIM)}`, { waitUntil: 'domcontentloaded' });
+  log('Login page loaded:', page.url());
+  log('Filling Epic email.');
   await page.locator('#email').fill(cfg.eg_email);
   await clickIfVisible(page, 'button#continue', 5000);
+  log('Filling Epic password.');
   await page.locator('#password').fill(cfg.eg_password);
   if (!await clickIfVisible(page, 'button#sign-in', 5000)) {
     await clickIfVisible(page, 'button[type="submit"]', 5000);
   }
+  log('Submitted Epic login form.');
 
   try {
     await page.waitForURL('**/id/login/mfa**', { timeout: 8000 });
@@ -144,6 +151,7 @@ async function ensureSignedIn(page) {
   await page.waitForURL('**/free-games**', { timeout: cfg.timeout }).catch(() => {});
   await page.waitForLoadState('domcontentloaded').catch(() => {});
   const signedIn = await page.locator('egs-navigation').getAttribute('isloggedin').catch(() => null);
+  log('Epic login confirmation:', signedIn || 'unknown', page.url());
   if (signedIn !== 'true') {
     throw new Error('login_not_confirmed');
   }
@@ -296,6 +304,9 @@ try {
     const targetOk = await claimTarget(page, db, user, target);
     ok = ok && targetOk;
   }
+} catch (error) {
+  ok = false;
+  console.error(datetime(), '[tdm-direct] Fatal error:', error?.stack || error);
 } finally {
   await context.close();
 }
@@ -1058,6 +1069,13 @@ class FreeGamesService:
                 output = b""
                 logger.warning("Timed out while stopping Epic runner process")
         text = output.decode(errors="replace")[-12000:]
+        if self._runner == "docker" and not timed_out:
+            docker_logs = await self._docker_output(
+                "docker", "logs", self._docker_container_name(account_id)
+            )
+            if docker_logs[1]:
+                text = docker_logs[1][-12000:]
+            await self._docker_output("docker", "rm", "-f", self._docker_container_name(account_id))
         log_path.write_text(text, encoding="utf8")
         success = process.returncode == 0 and not timed_out and not self._stop_requested
         attention = self._classify_attention(text, account_id)
@@ -1110,7 +1128,6 @@ class FreeGamesService:
         command = [
             "docker",
             "run",
-            "--rm",
             "--name",
             container_name,
             "--cpus",
