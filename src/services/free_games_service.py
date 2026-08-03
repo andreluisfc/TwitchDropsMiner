@@ -2111,9 +2111,10 @@ class FreeGamesService:
         return status
 
     def _is_vnc_ready(self, target: str) -> bool:
-        request = UrlRequest(target, method="HEAD")
+        request = UrlRequest(target, method="GET")
         try:
             with urlopen(request, timeout=2) as response:
+                response.read(1)
                 return 200 <= int(response.status) < 500
         except (OSError, URLError):
             return False

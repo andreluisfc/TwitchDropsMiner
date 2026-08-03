@@ -916,6 +916,41 @@ def test_free_games_vnc_status_waits_until_browser_is_ready(monkeypatch):
     }
 
 
+def test_free_games_vnc_ready_uses_light_get_request(monkeypatch):
+    settings = SimpleNamespace(
+        free_games_enabled=True,
+        free_games_runner="docker",
+        free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+        free_games_schedule_hours=24,
+        free_games_accounts=[],
+    )
+    service = FreeGamesService(make_twitch(settings))
+    calls = {}
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            calls["read_size"] = size
+            return b"<"
+
+    def fake_urlopen(request, timeout):
+        calls["method"] = request.get_method()
+        calls["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr("src.services.free_games_service.urlopen", fake_urlopen)
+
+    assert service._is_vnc_ready("http://fgc-epic-main:6080/vnc.html")
+    assert calls == {"method": "GET", "timeout": 2, "read_size": 1}
+
+
 def test_free_games_run_now_requires_enabled_account(monkeypatch):
     monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
     twitch = make_twitch(
