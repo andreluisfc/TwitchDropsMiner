@@ -841,6 +841,16 @@ class FreeGamesService:
                 "message": "Epic login required. Start a manual run and use Browser to sign in.",
                 "account_id": account_id,
             }
+        if "egs-navigation" in lower_text and "timeouterror" in lower_text:
+            return {
+                "required": True,
+                "reason": "epic_store_unavailable",
+                "message": (
+                    "Epic Store did not load in the claimer browser. "
+                    "Try an interactive Epic run from the panel or change network/image."
+                ),
+                "account_id": account_id,
+            }
         return {}
 
     def _latest_run_log_path(self) -> Path | None:

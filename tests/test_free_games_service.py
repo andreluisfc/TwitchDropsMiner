@@ -302,6 +302,48 @@ def test_free_games_status_detects_epic_captcha_attention(monkeypatch):
     }
 
 
+def test_free_games_status_detects_epic_store_navigation_timeout(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        account_dir = data_dir / "accounts" / "main"
+        account_dir.mkdir(parents=True)
+        (account_dir / "last-run.log").write_text(
+            "locator.getAttribute: Timeout 180000ms exceeded.\n"
+            "Call log:\n  - waiting for locator('egs-navigation')\n"
+            "name: 'TimeoutError'",
+            encoding="utf8",
+        )
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:dev",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main"}],
+                )
+            )
+        )
+        service._started_at = service._started_at - timedelta(minutes=11)
+        status = service.get_status()
+
+    assert status["attention"] == {
+        "required": True,
+        "reason": "epic_store_unavailable",
+        "message": (
+            "Epic Store did not load in the claimer browser. "
+            "Try an interactive Epic run from the panel or change network/image."
+        ),
+        "account_id": "main",
+    }
+    assert status["automation"] == {
+        "scheduled_accounts": 0,
+        "paused": True,
+        "pause_reason": "attention_required",
+    }
+
+
 def test_free_games_status_marks_automation_paused_when_all_accounts_need_attention(monkeypatch):
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
         data_dir = Path(temp_dir)
