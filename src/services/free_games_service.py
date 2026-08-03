@@ -38,7 +38,10 @@ FREE_GAMES_DATA_DIR = DATA_DIR / "free-games"
 SECRET_PLACEHOLDER = "********"
 DEFAULT_FREE_GAMES_IMAGE = "ghcr.io/vogler/free-games-claimer:latest"
 FREE_GAMES_VNC_PROXY_PATH = "/api/free-games/vnc/"
-FREE_GAMES_VNC_PROXY_URL = f"{FREE_GAMES_VNC_PROXY_PATH}vnc.html?autoconnect=true&resize=remote"
+FREE_GAMES_VNC_PROXY_URL = (
+    f"{FREE_GAMES_VNC_PROXY_PATH}vnc.html"
+    "?autoconnect=true&resize=remote&path=api/free-games/vnc/websockify"
+)
 FREE_GAMES_STARTUP_GRACE_MINUTES = 10
 FREE_GAMES_BROWSER_WIDTH = 800
 FREE_GAMES_BROWSER_HEIGHT = 600

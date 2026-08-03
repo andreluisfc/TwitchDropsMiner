@@ -22,6 +22,7 @@ logs/
 .claude/
 data/
 .ruff_cache/
+.playwright-cli/
 .vscode/
 .idea/
 *.iml

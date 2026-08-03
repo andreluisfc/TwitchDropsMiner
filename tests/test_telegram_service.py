@@ -567,7 +567,10 @@ def test_telegram_status_keyboard_includes_epic_browser_button_when_active():
                 "running": True,
                 "vnc": {
                     "active": True,
-                    "url": "/api/free-games/vnc/vnc.html?autoconnect=true&resize=remote",
+                    "url": (
+                        "/api/free-games/vnc/vnc.html"
+                        "?autoconnect=true&resize=remote&path=api/free-games/vnc/websockify"
+                    ),
                 },
                 "accounts": [{"id": "main", "name": "Main"}],
             }
@@ -593,7 +596,7 @@ def test_telegram_status_keyboard_includes_epic_browser_button_when_active():
             "text": "🌐 Epic Browser",
             "url": (
                 "https://panel.example.com/api/free-games/vnc/vnc.html"
-                "?autoconnect=true&resize=remote"
+                "?autoconnect=true&resize=remote&path=api/free-games/vnc/websockify"
             ),
         }
     ] in markup["inline_keyboard"]
