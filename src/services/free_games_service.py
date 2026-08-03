@@ -38,7 +38,8 @@ FREE_GAMES_BROWSER_WIDTH = 800
 FREE_GAMES_BROWSER_HEIGHT = 600
 FREE_GAMES_DOCKER_CPUS = "0.30"
 FREE_GAMES_DOCKER_MEMORY = "512m"
-FREE_GAMES_MIN_AVAILABLE_MEMORY_MB = 650
+FREE_GAMES_MIN_AVAILABLE_MEMORY_MB = 520
+FREE_GAMES_EXCLUSIVE_SETTLE_SECONDS = 15
 
 
 class FreeGamesService:
@@ -136,7 +137,13 @@ class FreeGamesService:
             "accounts": [self._account_status(account) for account in self._accounts],
         }
 
-    def run_now(self, account_id: str | None = None, *, interactive: bool = True) -> bool:
+    def run_now(
+        self,
+        account_id: str | None = None,
+        *,
+        interactive: bool = True,
+        exclusive: bool = False,
+    ) -> bool:
         if not self._enabled:
             return False
         if not self.has_enabled_accounts(account_id):
@@ -144,13 +151,18 @@ class FreeGamesService:
             self._save_state()
             self._twitch.telegram.queue_status_update()
             return False
-        if not self._resources_allow_run():
+        if not exclusive and not self._resources_allow_run():
             return False
         if self._run_task is not None and not self._run_task.done():
             return False
-        self._run_task = self._create_task(
-            self._run_accounts(account_id, interactive=interactive)
-        )
+        if exclusive:
+            self._run_task = self._create_task(
+                self._run_accounts_exclusive(account_id, interactive=interactive)
+            )
+        else:
+            self._run_task = self._create_task(
+                self._run_accounts(account_id, interactive=interactive)
+            )
         return self._run_task is not None
 
     def update_runner(self) -> bool:
@@ -263,11 +275,47 @@ class FreeGamesService:
         if not self._scheduled_accounts():
             return False
         if not self._resources_allow_run():
-            return False
+            self._run_task = self._create_task(
+                self._run_accounts_exclusive(scheduled=True, interactive=False)
+            )
+            return self._run_task is not None
         self._run_task = self._create_task(
             self._run_accounts(scheduled=True, interactive=False)
         )
         return self._run_task is not None
+
+    async def _run_accounts_exclusive(
+        self,
+        account_id: str | None = None,
+        *,
+        scheduled: bool = False,
+        interactive: bool = True,
+    ) -> None:
+        pause = getattr(self._twitch, "pause_twitch_worker", None)
+        resume = getattr(self._twitch, "resume_twitch_worker", None)
+        paused = False
+        try:
+            if pause is not None:
+                await pause("Epic Freebies exclusive run")
+                paused = True
+                await asyncio.sleep(self._exclusive_settle_seconds())
+            if not self._resources_allow_run():
+                return
+            await self._run_accounts(
+                account_id,
+                scheduled=scheduled,
+                interactive=interactive,
+            )
+        finally:
+            if paused and resume is not None:
+                resume()
+
+    def _exclusive_settle_seconds(self) -> int:
+        raw_value = os.getenv("FREE_GAMES_EXCLUSIVE_SETTLE_SECONDS", "").strip()
+        if raw_value:
+            with suppress(ValueError):
+                return max(0, int(raw_value))
+        return FREE_GAMES_EXCLUSIVE_SETTLE_SECONDS
 
     async def _run_accounts(
         self,

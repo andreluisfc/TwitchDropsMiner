@@ -591,6 +591,58 @@ def test_free_games_run_now_requires_enough_available_memory(monkeypatch):
     twitch.telegram.queue_status_update.assert_called_once()
 
 
+def test_free_games_exclusive_run_can_start_with_low_initial_memory(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    twitch = make_twitch(
+        SimpleNamespace(
+            free_games_enabled=True,
+            free_games_runner="docker",
+            free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+            free_games_schedule_hours=24,
+            free_games_accounts=[{"id": "main", "enabled": True}],
+        )
+    )
+    service = FreeGamesService(twitch)
+    monkeypatch.setattr(service, "_available_memory_mb", lambda: 512)
+
+    def fake_create_task(coro):
+        coro.close()
+        return SimpleNamespace(done=lambda: False)
+
+    service._create_task = MagicMock(side_effect=fake_create_task)
+
+    assert service.run_now(exclusive=True)
+    service._create_task.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_free_games_exclusive_run_pauses_and_resumes_twitch(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    twitch = make_twitch(
+        SimpleNamespace(
+            free_games_enabled=True,
+            free_games_runner="docker",
+            free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+            free_games_schedule_hours=24,
+            free_games_accounts=[{"id": "main", "enabled": True}],
+        )
+    )
+    twitch.pause_twitch_worker = AsyncMock()
+    twitch.resume_twitch_worker = MagicMock()
+    service = FreeGamesService(twitch)
+    monkeypatch.setattr(service, "_exclusive_settle_seconds", lambda: 0)
+    monkeypatch.setattr(service, "_resources_allow_run", MagicMock(return_value=True))
+    service._run_accounts = AsyncMock()
+
+    await service._run_accounts_exclusive("main", interactive=False)
+
+    twitch.pause_twitch_worker.assert_awaited_once_with("Epic Freebies exclusive run")
+    service._run_accounts.assert_awaited_once_with(
+        "main", scheduled=False, interactive=False
+    )
+    twitch.resume_twitch_worker.assert_called_once_with()
+
+
 def test_free_games_stop_run_requests_active_container_stop():
     service = FreeGamesService(
         make_twitch(

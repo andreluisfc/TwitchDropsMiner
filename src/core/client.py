@@ -60,6 +60,9 @@ class Twitch:
         # State management
         self._state: State = State.IDLE
         self._state_change = asyncio.Event()
+        self._twitch_worker_pause_reason: str | None = None
+        self._twitch_worker_resume_event = asyncio.Event()
+        self._twitch_worker_resume_event.set()
         self.wanted_games: list[Game] = []
         self.inventory: list[DropsCampaign] = []
         self._drops: dict[str, TimedDrop] = {}
@@ -161,6 +164,40 @@ class Twitch:
     def is_exiting(self) -> bool:
         return self._state is State.EXIT
 
+    async def pause_twitch_worker(self, reason: str) -> None:
+        """Pause Twitch mining so a heavier hub module can run alone."""
+        if self._state is State.EXIT:
+            return
+        if self._twitch_worker_pause_reason is None:
+            logger.info("Pausing Twitch Drops worker: %s", reason)
+            self._twitch_worker_pause_reason = reason
+            self._twitch_worker_resume_event.clear()
+            self._state_change.set()
+            with suppress(Exception):
+                self.gui.status.update(f"Twitch Drops paused: {reason}")
+            with suppress(Exception):
+                self.telegram.queue_status_update(immediate=True)
+        await self.stop_twitch_worker()
+
+    def resume_twitch_worker(self) -> None:
+        """Resume Twitch mining after an exclusive hub module finishes."""
+        if self._twitch_worker_pause_reason is None:
+            return
+        logger.info("Resuming Twitch Drops worker")
+        self._twitch_worker_pause_reason = None
+        self._twitch_worker_resume_event.set()
+        if self._state is not State.EXIT:
+            self.change_state(State.INVENTORY_FETCH)
+        with suppress(Exception):
+            self.telegram.queue_status_update(immediate=True)
+
+    def is_twitch_worker_paused(self) -> bool:
+        return self._twitch_worker_pause_reason is not None
+
+    async def wait_until_twitch_worker_resumed(self) -> None:
+        while self.is_twitch_worker_paused() and not self.is_exiting():
+            await self._twitch_worker_resume_event.wait()
+
     def wait_until_login(self) -> abc.Coroutine[Any, Any, Literal[True]]:
         """Wait until the user is logged in."""
         return self._auth_state._logged_in.wait()
@@ -243,6 +280,8 @@ class Twitch:
         channels: Final[OrderedDict[int, Channel]] = self.channels
         self.change_state(State.INVENTORY_FETCH)
         while True:
+            if self.is_twitch_worker_paused():
+                return
             if self._state is State.IDLE:
                 self.gui.status.update(_.t["gui"]["status"]["idle"])
                 self.stop_watching()

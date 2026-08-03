@@ -174,12 +174,18 @@ class TwitchDropsModuleAdapter:
 
         watching_channel = self._twitch.watching_channel.get_with_default(None)
         manual_mode = self._twitch.get_manual_mode_info()
+        paused = bool(
+            getattr(self._twitch, "is_twitch_worker_paused", lambda: False)()
+        )
+        if paused:
+            status = "Paused for another hub module"
+            watching_channel = None
         return {
             "id": self.module_id,
             "name": "Twitch Drops",
             "kind": "builtin",
             "enabled": True,
-            "running": watching_channel is not None,
+            "running": watching_channel is not None and not paused,
             "updating": False,
             "status": status,
             "upstream": "https://github.com/rangermix/TwitchDropsMiner",
@@ -207,6 +213,7 @@ class TwitchDropsModuleAdapter:
                 },
                 "login": login,
                 "manual_mode": manual_mode,
+                "paused": paused,
                 "watching_channel": getattr(watching_channel, "name", None),
             },
         }
@@ -316,7 +323,8 @@ class EpicFreeGamesModuleAdapter:
                 "detail": "No enabled Epic accounts configured",
             }
         interactive = bool(params.get("interactive", True))
-        if not free_games.run_now(account_id, interactive=interactive):
+        exclusive = bool(params.get("exclusive", True))
+        if not free_games.run_now(account_id, interactive=interactive, exclusive=exclusive):
             status = free_games.get_status()
             return {
                 "success": False,

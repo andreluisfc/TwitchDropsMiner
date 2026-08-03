@@ -202,6 +202,28 @@ def test_hub_service_labels_epic_setup_state():
     assert epic_module["status"] == "No accounts configured"
 
 
+def test_hub_service_marks_twitch_module_paused():
+    twitch = SimpleNamespace(
+        _state="watching",
+        gui=None,
+        watching_channel=SimpleNamespace(
+            get_with_default=lambda default: SimpleNamespace(name="streamer")
+        ),
+        get_manual_mode_info=lambda: {"active": False},
+        is_twitch_worker_paused=lambda: True,
+        channels={},
+        inventory=[],
+        wanted_games=[],
+        free_games=SimpleNamespace(get_status=lambda: {"module": {}, "accounts": []}),
+    )
+
+    twitch_module = HubService(twitch).get_status()["modules"][0]
+
+    assert twitch_module["running"] is False
+    assert twitch_module["status"] == "Paused for another hub module"
+    assert twitch_module["details"]["paused"] is True
+
+
 def test_hub_service_runs_twitch_reload_action():
     twitch = SimpleNamespace(
         change_state=MagicMock(),
@@ -254,7 +276,7 @@ def test_hub_service_runs_epic_actions():
         "action": "stop",
     }
     free_games.update_runner.assert_called_once_with()
-    free_games.run_now.assert_called_once_with("main", interactive=True)
+    free_games.run_now.assert_called_once_with("main", interactive=True, exclusive=True)
     free_games.clear_attention.assert_called_once_with("main")
     free_games.stop_run.assert_called_once_with()
 
@@ -277,7 +299,9 @@ def test_hub_service_can_run_epic_account_in_background():
         "module_id": "free-games-epic",
         "action": "run_account",
     }
-    free_games.run_now.assert_called_once_with("main", interactive=False)
+    free_games.run_now.assert_called_once_with(
+        "main", interactive=False, exclusive=True
+    )
 
 
 def test_hub_service_reports_epic_run_preflight_error():

@@ -95,6 +95,10 @@ if __name__ == "__main__":
             while not client.is_exiting():
                 try:
                     await client.run()
+                    if client.is_twitch_worker_paused():
+                        logger.info("Twitch Drops module paused by hub")
+                        await client.wait_until_twitch_worker_resumed()
+                        continue
                     logger.info("Client run completed normally")
                     break
                 except CaptchaRequired:
@@ -109,6 +113,9 @@ if __name__ == "__main__":
                     client.telegram.notify_error("Twitch Drops module crashed; retrying.")
                     client.telegram.queue_status_update(immediate=True)
                     await client.stop_twitch_worker()
+                    if client.is_twitch_worker_paused():
+                        await client.wait_until_twitch_worker_resumed()
+                        continue
                     for _retry_second in range(60):
                         if client.is_exiting():
                             break

@@ -111,6 +111,7 @@ class ProxyVerifyRequest(BaseModel):
 class FreeGamesRunRequest(BaseModel):
     account_id: str | None = None
     interactive: bool = True
+    exclusive: bool = True
 
 
 class HubActionRequest(BaseModel):
@@ -300,9 +301,13 @@ async def run_free_games(request: FreeGamesRunRequest):
     result = twitch_client.hub.run_action(
         "free-games-epic",
         action,
-        {"account_id": request.account_id, "interactive": request.interactive}
+        {
+            "account_id": request.account_id,
+            "interactive": request.interactive,
+            "exclusive": request.exclusive,
+        }
         if request.account_id
-        else {"interactive": request.interactive},
+        else {"interactive": request.interactive, "exclusive": request.exclusive},
     )
     return _hub_action_response(result)
 
