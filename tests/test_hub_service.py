@@ -280,6 +280,27 @@ def test_hub_service_can_run_epic_account_in_background():
     free_games.run_now.assert_called_once_with("main", interactive=False)
 
 
+def test_hub_service_reports_epic_run_preflight_error():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(
+            return_value={
+                "enabled": True,
+                "last_error": "Not enough free-tier VM memory to start Epic safely.",
+            }
+        ),
+        account_exists=MagicMock(return_value=True),
+        has_enabled_accounts=MagicMock(return_value=True),
+        run_now=MagicMock(return_value=False),
+    )
+    hub = HubService(SimpleNamespace(free_games=free_games))
+
+    assert hub.run_action("free-games-epic", "run") == {
+        "success": False,
+        "status_code": 409,
+        "detail": "Not enough free-tier VM memory to start Epic safely.",
+    }
+
+
 def test_hub_service_runs_update_all_action():
     free_games = SimpleNamespace(
         update_runner=MagicMock(return_value=True),

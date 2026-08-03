@@ -317,10 +317,11 @@ class EpicFreeGamesModuleAdapter:
             }
         interactive = bool(params.get("interactive", True))
         if not free_games.run_now(account_id, interactive=interactive):
+            status = free_games.get_status()
             return {
                 "success": False,
                 "status_code": 409,
-                "detail": "Free games module is already running",
+                "detail": status.get("last_error") or "Free games module is already running",
             }
         return {"success": True, "module_id": "free-games-epic", "action": action}
 
