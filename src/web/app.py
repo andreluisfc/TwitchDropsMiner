@@ -395,13 +395,16 @@ def _fetch_vnc_http(
                 upstream.headers.get_content_type(),
             )
     except HTTPError as error:
-        content = b"" if method.upper() == "HEAD" else error.read()
-        return (
-            int(error.code),
-            content,
-            _proxy_response_headers(error.headers),
-            error.headers.get_content_type() if error.headers else None,
-        )
+        try:
+            content = b"" if method.upper() == "HEAD" else error.read()
+            return (
+                int(error.code),
+                content,
+                _proxy_response_headers(error.headers),
+                error.headers.get_content_type() if error.headers else None,
+            )
+        finally:
+            error.close()
 
 
 @app.websocket("/api/free-games/vnc/{path:path}")
