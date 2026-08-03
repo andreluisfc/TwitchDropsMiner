@@ -35,6 +35,7 @@ FREE_GAMES_DATA_DIR = DATA_DIR / "free-games"
 SECRET_PLACEHOLDER = "********"
 DEFAULT_FREE_GAMES_IMAGE = "ghcr.io/vogler/free-games-claimer:latest"
 FREE_GAMES_VNC_PROXY_PATH = "/api/free-games/vnc/"
+FREE_GAMES_VNC_PROXY_URL = f"{FREE_GAMES_VNC_PROXY_PATH}vnc.html?autoconnect=true"
 FREE_GAMES_STARTUP_GRACE_MINUTES = 10
 FREE_GAMES_BROWSER_WIDTH = 800
 FREE_GAMES_BROWSER_HEIGHT = 600
@@ -2011,7 +2012,7 @@ class FreeGamesService:
         )
         status = {
             "enabled": self._runner == "docker",
-            "url": FREE_GAMES_VNC_PROXY_PATH if active else None,
+            "url": FREE_GAMES_VNC_PROXY_URL if active else None,
             "bind": self._docker_network or "127.0.0.1:6080",
             "active": active,
         }
