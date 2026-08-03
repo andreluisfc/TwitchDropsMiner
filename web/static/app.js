@@ -2360,6 +2360,9 @@ function updateHubModules(hub) {
             Object.entries(module.metrics || {}).forEach(([key, value]) => {
                 meta.appendChild(makeElement('span', { class: 'status-pill' }, `${formatMetricName(key)}: ${value}`));
             });
+            getHubModuleLinks(module).forEach(link => {
+                meta.appendChild(makeElement('a', { class: 'small-btn', href: link.href, target: '_blank', rel: 'noopener noreferrer' }, link.label));
+            });
             getHubModuleActions(module).forEach(action => {
                 meta.appendChild(makeElement('button', { type: 'button', class: 'small-btn' }, action.label, button => {
                     button.disabled = action.disabled;
@@ -2395,6 +2398,15 @@ function formatLogInfo(log, label) {
     if (log.updated_at) details.push(formatLocalDateTime(log.updated_at));
     if (Number(log.size_bytes || 0) > 0) details.push(`${log.size_bytes} bytes`);
     return `${label}: ${details.join(' · ') || log.path || 'available'}`;
+}
+
+function getHubModuleLinks(module) {
+    const links = [];
+    const vnc = module.details?.vnc;
+    if (vnc?.active && vnc?.url) {
+        links.push({ href: vnc.url, label: 'Browser' });
+    }
+    return links;
 }
 
 function appendFreeGamesLogButton(parent, kind, label, accountId = null) {

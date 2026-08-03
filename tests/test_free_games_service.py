@@ -810,7 +810,7 @@ def test_free_games_vnc_target_uses_active_account_and_hub_network(monkeypatch):
 
     assert service.get_status()["vnc"] == {
         "enabled": True,
-        "url": "/api/free-games/vnc/vnc.html",
+        "url": "/api/free-games/vnc/vnc.html?autoconnect=true&resize=remote",
         "bind": "tdm-hub",
         "active": True,
         "running": True,

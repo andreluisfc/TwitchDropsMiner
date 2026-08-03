@@ -263,10 +263,13 @@ class TelegramService:
     def _epic_browser_url(self, free_games_status: dict[str, Any]) -> str | None:
         panel_url = self._panel_url
         vnc_url = str((free_games_status.get("vnc") or {}).get("url") or "")
-        if not panel_url.startswith("https://") or not vnc_url.startswith("/"):
+        if not panel_url.startswith("https://") or not vnc_url.startswith("/") or vnc_url.startswith("//"):
             return None
         parsed = urlsplit(panel_url)
-        return urlunsplit((parsed.scheme, parsed.netloc, vnc_url, "", ""))
+        relative = urlsplit(vnc_url)
+        if relative.scheme or relative.netloc:
+            return None
+        return urlunsplit((parsed.scheme, parsed.netloc, relative.path, relative.query, relative.fragment))
 
     def _format_status_message(self, queue_limit: int = 8) -> str:
         watching_channel = self._twitch.watching_channel.get_with_default(None)

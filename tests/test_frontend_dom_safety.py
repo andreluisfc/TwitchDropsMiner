@@ -27,3 +27,13 @@ def test_hub_module_actions_are_declared_by_modules():
     assert "module.actions" in action_fn
     assert "module.id ===" not in action_fn
     assert "run_account" in app_source
+
+
+def test_hub_module_links_are_declared_by_module_details():
+    app_source = APP_JS.read_text(encoding="utf-8")
+    link_fn = app_source[
+        app_source.index("function getHubModuleLinks") : app_source.index("function appendFreeGamesLogButton")
+    ]
+
+    assert "module.details?.vnc" in link_fn
+    assert "module.id ===" not in link_fn
