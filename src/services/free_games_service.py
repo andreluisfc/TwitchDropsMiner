@@ -34,6 +34,10 @@ SECRET_PLACEHOLDER = "********"
 DEFAULT_FREE_GAMES_IMAGE = "ghcr.io/vogler/free-games-claimer:latest"
 FREE_GAMES_VNC_PROXY_PATH = "/api/free-games/vnc/"
 FREE_GAMES_STARTUP_GRACE_MINUTES = 10
+FREE_GAMES_BROWSER_WIDTH = 1024
+FREE_GAMES_BROWSER_HEIGHT = 768
+FREE_GAMES_DOCKER_CPUS = "0.65"
+FREE_GAMES_DOCKER_MEMORY = "650m"
 
 
 class FreeGamesService:
@@ -437,6 +441,12 @@ class FreeGamesService:
             "--rm",
             "--name",
             container_name,
+            "--cpus",
+            FREE_GAMES_DOCKER_CPUS,
+            "--memory",
+            FREE_GAMES_DOCKER_MEMORY,
+            "--shm-size",
+            "128m",
             "-v",
             f"{host_account_dir}:/fgc/data",
             "-e",
@@ -459,6 +469,8 @@ class FreeGamesService:
             "VNC_PASSWORD",
             "LOGIN_TIMEOUT",
             "TIMEOUT",
+            "WIDTH",
+            "HEIGHT",
         ):
             if env.get(key):
                 command.extend(["-e", key])
@@ -519,6 +531,8 @@ class FreeGamesService:
             "SCREENSHOTS_DIR": str(account_dir / "screenshots"),
             "LOGIN_TIMEOUT": str(self._claimer_login_timeout_seconds()),
             "TIMEOUT": str(self._claimer_action_timeout_seconds()),
+            "WIDTH": str(FREE_GAMES_BROWSER_WIDTH),
+            "HEIGHT": str(FREE_GAMES_BROWSER_HEIGHT),
         }
         mapping = {
             "email": "EG_EMAIL",
