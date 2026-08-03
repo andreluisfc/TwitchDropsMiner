@@ -459,6 +459,7 @@ header h1 {
     border-radius: 6px;
     color: var(--text-secondary);
     font-size: 12px;
+    white-space: nowrap;
 }
 
 .status-pill.active {
@@ -1900,6 +1901,15 @@ header h1 {
 
     .help-content {
         padding: 20px;
+    }
+
+    .hub-module-row {
+        grid-template-columns: 1fr;
+    }
+
+    .hub-module-meta {
+        justify-content: flex-start;
+        max-width: none;
     }
 }
 
