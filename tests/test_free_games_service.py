@@ -584,7 +584,7 @@ def test_free_games_run_now_requires_enough_available_memory(monkeypatch):
         )
     )
     service = FreeGamesService(twitch)
-    monkeypatch.setattr(service, "_available_memory_mb", lambda: 512)
+    monkeypatch.setattr(service, "_available_memory_mb", lambda: 420)
 
     assert not service.run_now()
     assert "Not enough free-tier VM memory" in service.get_status()["last_error"]
@@ -603,7 +603,7 @@ def test_free_games_exclusive_run_can_start_with_low_initial_memory(monkeypatch)
         )
     )
     service = FreeGamesService(twitch)
-    monkeypatch.setattr(service, "_available_memory_mb", lambda: 512)
+    monkeypatch.setattr(service, "_available_memory_mb", lambda: 420)
 
     def fake_create_task(coro):
         coro.close()
