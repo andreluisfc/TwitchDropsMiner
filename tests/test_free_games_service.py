@@ -476,12 +476,12 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
     assert env["VNC_PASSWORD"] == "vnc-secret"
     assert env["LOGIN_TIMEOUT"] == "840"
     assert env["TIMEOUT"] == "180"
-    assert env["WIDTH"] == "1024"
-    assert env["HEIGHT"] == "768"
+    assert env["WIDTH"] == "800"
+    assert env["HEIGHT"] == "600"
     assert "--cpus" in command
-    assert "0.65" in command
+    assert "0.30" in command
     assert "--memory" in command
-    assert "650m" in command
+    assert "512m" in command
     assert "--shm-size" in command
     assert "128m" in command
     assert command.count("-e") >= 9
