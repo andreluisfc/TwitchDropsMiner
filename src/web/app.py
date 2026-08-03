@@ -4,12 +4,15 @@ import asyncio
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.error import HTTPError
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 
 import aiohttp
 import socketio
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -357,39 +360,46 @@ async def proxy_free_games_vnc(path: str, request: Request):
     if not target:
         raise HTTPException(status_code=404, detail="Epic browser is not active")
 
-    headers = _proxy_request_headers(request.headers)
     body = await request.body()
-    session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60, sock_read=30))
-    try:
-        upstream = await session.request(
-            request.method,
-            target,
-            headers=headers,
-            data=body if body else None,
-            allow_redirects=False,
-        )
-    except Exception:
-        await session.close()
-        raise
-
-    response_headers = _proxy_response_headers(upstream.headers)
+    status, content, response_headers, media_type = await asyncio.to_thread(
+        _fetch_vnc_http,
+        request.method,
+        target,
+        body if body else None,
+    )
     if location := response_headers.get("location"):
         response_headers["location"] = _rewrite_vnc_location(location)
-
-    async def stream_response():
-        try:
-            async for chunk in upstream.content.iter_chunked(65536):
-                yield chunk
-        finally:
-            upstream.release()
-            await session.close()
-
-    return StreamingResponse(
-        stream_response(),
-        status_code=upstream.status,
+    return Response(
+        content=content,
+        status_code=status,
         headers=response_headers,
-        media_type=upstream.content_type,
+        media_type=media_type,
     )
+
+
+def _fetch_vnc_http(
+    method: str,
+    target: str,
+    body: bytes | None,
+) -> tuple[int, bytes, dict[str, str], str | None]:
+    request = UrlRequest(target, data=body, method=method)
+    try:
+        with urlopen(request, timeout=30) as upstream:
+            content = b"" if method.upper() == "HEAD" else upstream.read()
+            return (
+                int(upstream.status),
+                content,
+                _proxy_response_headers(upstream.headers),
+                upstream.headers.get_content_type(),
+            )
+    except HTTPError as error:
+        content = b"" if method.upper() == "HEAD" else error.read()
+        return (
+            int(error.code),
+            content,
+            _proxy_response_headers(error.headers),
+            error.headers.get_content_type() if error.headers else None,
+        )
 
 
 @app.websocket("/api/free-games/vnc/{path:path}")
