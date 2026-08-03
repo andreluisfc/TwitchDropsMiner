@@ -10,6 +10,7 @@ from collections.abc import Coroutine
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone, tzinfo
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
@@ -228,6 +229,8 @@ class TelegramService:
                         keyboard.append(
                             [{"text": "⏹ Stop Epic", "callback_data": CALLBACK_FREE_GAMES_STOP}]
                         )
+                        if browser_url := self._epic_browser_url(status):
+                            keyboard.append([{"text": "🌐 Epic Browser", "url": browser_url}])
                     account_buttons = []
                     attention_buttons = []
                     for index, account in enumerate((status.get("accounts") or [])[:4]):
@@ -256,6 +259,14 @@ class TelegramService:
         return {
             "inline_keyboard": keyboard
         }
+
+    def _epic_browser_url(self, free_games_status: dict[str, Any]) -> str | None:
+        panel_url = self._panel_url
+        vnc_url = str((free_games_status.get("vnc") or {}).get("url") or "")
+        if not panel_url.startswith("https://") or not vnc_url.startswith("/"):
+            return None
+        parsed = urlsplit(panel_url)
+        return urlunsplit((parsed.scheme, parsed.netloc, vnc_url, "", ""))
 
     def _format_status_message(self, queue_limit: int = 8) -> str:
         watching_channel = self._twitch.watching_channel.get_with_default(None)

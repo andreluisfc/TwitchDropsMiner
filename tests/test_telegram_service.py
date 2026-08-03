@@ -559,6 +559,43 @@ def test_telegram_status_keyboard_includes_epic_stop_button_when_running():
     ]
 
 
+def test_telegram_status_keyboard_includes_epic_browser_button_when_active():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(
+            return_value={
+                "enabled": True,
+                "running": True,
+                "vnc": {
+                    "active": True,
+                    "url": "/api/free-games/vnc/vnc.html",
+                },
+                "accounts": [{"id": "main", "name": "Main"}],
+            }
+        )
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="https://panel.example.com/tg/gate",
+            telegram_notifications={"status_message": True},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        free_games=free_games,
+    )
+    markup = TelegramService(twitch)._status_reply_markup()
+
+    assert [
+        {
+            "text": "🌐 Epic Browser",
+            "url": "https://panel.example.com/api/free-games/vnc/vnc.html",
+        }
+    ] in markup["inline_keyboard"]
+
+
 @pytest.mark.asyncio
 async def test_telegram_callback_runs_specific_epic_account():
     free_games = SimpleNamespace(
