@@ -1430,6 +1430,10 @@ class FreeGamesService:
         active_account_id = str(self._state.get("active_account_id") or "")
         if active_account_id and (active_attention := self._active_interactive_attention(active_account_id)):
             return active_attention
+        for account in self._accounts:
+            account_id = str(account["id"])
+            if state_attention := self._account_state_attention_info(account_id):
+                return state_attention
         log_path = self._latest_run_log_path()
         if log_path is None:
             return info
@@ -1444,14 +1448,15 @@ class FreeGamesService:
     def _account_attention_info(self, account_id: str) -> dict[str, Any]:
         if active_attention := self._active_interactive_attention(account_id):
             return active_attention
+        state_attention = self._account_state_attention_info(account_id)
         log_path = self._account_run_log_path(account_id)
         if log_path is None:
-            return self._empty_attention_info(account_id)
+            return state_attention or self._empty_attention_info(account_id)
         text = log_path.read_text(encoding="utf8", errors="replace")
         attention = self._classify_attention(text, account_id)
         if attention and self._attention_was_cleared(account_id, log_path):
-            return self._empty_attention_info(account_id)
-        return attention or self._empty_attention_info(account_id)
+            return state_attention or self._empty_attention_info(account_id)
+        return attention or state_attention or self._empty_attention_info(account_id)
 
     def _empty_attention_info(self, account_id: str | None = None) -> dict[str, Any]:
         return {
@@ -1477,6 +1482,29 @@ class FreeGamesService:
                 "account_id": account_id,
             }
         return {}
+
+    def _account_state_attention_info(self, account_id: str) -> dict[str, Any]:
+        account_state = self._state.get("accounts", {}).get(account_id, {})
+        if not isinstance(account_state, dict):
+            return {}
+        if account_state.get("last_run_success") is not False:
+            return {}
+        last_error = str(account_state.get("last_error") or "")
+        if "timed out after" not in last_error.lower():
+            return {}
+        if not self._catalog_claim_targets(account_id):
+            return {}
+        if self._state_attention_was_cleared(account_state):
+            return {}
+        return {
+            "required": True,
+            "reason": "manual_login_timeout",
+            "message": (
+                "Epic run timed out before pending freebies were claimed. "
+                "Start a manual Epic run and use Browser to finish login, captcha, or MFA."
+            ),
+            "account_id": account_id,
+        }
 
     def _account_automation_info(
         self, account: dict[str, Any], attention: dict[str, Any]
@@ -1571,6 +1599,18 @@ class FreeGamesService:
             return False
         log_updated = datetime.fromtimestamp(log_path.stat().st_mtime).astimezone()
         return cleared >= log_updated
+
+    def _state_attention_was_cleared(self, account_state: dict[str, Any]) -> bool:
+        cleared_at = account_state.get("attention_cleared_at")
+        finished_at = account_state.get("last_run_finished_at")
+        if not cleared_at or not finished_at:
+            return False
+        try:
+            cleared = datetime.fromisoformat(str(cleared_at))
+            finished = datetime.fromisoformat(str(finished_at))
+        except ValueError:
+            return False
+        return cleared >= finished
 
     def _logs_info(self) -> dict[str, Any]:
         return {

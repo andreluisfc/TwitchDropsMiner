@@ -1,7 +1,7 @@
 import asyncio
 import json
 import tempfile
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -574,6 +574,58 @@ def test_free_games_status_marks_active_interactive_run_as_manual_attention(monk
         "paused": True,
         "pause_reason": "attention_required",
     }
+
+
+def test_free_games_status_marks_timed_out_pending_claim_as_manual_attention(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:dev",
+                free_games_schedule_hours=24,
+                free_games_accounts=[{"id": "main@example.com"}],
+            )
+        )
+    )
+    service._state["accounts"] = {
+        "main@example.com": {
+            "attention_cleared_at": (
+                datetime.now().astimezone() - timedelta(minutes=40)
+            ).isoformat(),
+            "last_run_finished_at": (
+                datetime.now().astimezone() - timedelta(minutes=10)
+            ).isoformat(),
+            "last_run_success": False,
+            "last_error": "Timed out after 30 minute(s).",
+        }
+    }
+    monkeypatch.setattr(
+        service,
+        "_catalog_claim_targets",
+        lambda account_id: [{"id": "game", "title": "Pending Game"}],
+    )
+
+    status = service.get_status()
+
+    assert status["attention"] == {
+        "required": True,
+        "reason": "manual_login_timeout",
+        "message": (
+            "Epic run timed out before pending freebies were claimed. "
+            "Start a manual Epic run and use Browser to finish login, captcha, or MFA."
+        ),
+        "account_id": "main@example.com",
+    }
+    assert status["automation"] == {
+        "scheduled_accounts": 0,
+        "paused": True,
+        "pause_reason": "attention_required",
+    }
+
+    assert service.clear_attention("main@example.com")
+    assert service.get_status()["attention"]["required"] is False
 
 
 def test_free_games_clear_attention_resumes_scheduling_without_deleting_log(monkeypatch):
