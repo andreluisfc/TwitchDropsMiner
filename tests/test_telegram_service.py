@@ -161,6 +161,46 @@ def test_telegram_recent_claimed_drops_are_grouped_by_game():
     ]
 
 
+def test_telegram_dates_default_to_sao_paulo_timezone(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_TIMEZONE", raising=False)
+    monkeypatch.delenv("TDM_TIMEZONE", raising=False)
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="",
+            telegram_chat_id="",
+            telegram_enabled=False,
+            telegram_panel_url="",
+            telegram_notifications={},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+    )
+    service = TelegramService(twitch)
+
+    assert service._format_datetime("2026-08-03T17:00:00+00:00") == "03/08 14:00"
+    assert service._format_claimed_at("2026-08-03T17:15:00+00:00") == "03/08 14:15"
+
+
+def test_telegram_dates_allow_timezone_override(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_TIMEZONE", "UTC")
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="",
+            telegram_chat_id="",
+            telegram_enabled=False,
+            telegram_panel_url="",
+            telegram_notifications={},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+    )
+    service = TelegramService(twitch)
+
+    assert service._format_datetime("2026-08-03T17:00:00+00:00") == "03/08 17:00"
+
+
 def test_telegram_free_games_lines_include_attention_message():
     free_games = SimpleNamespace(
         get_status=MagicMock(
@@ -336,14 +376,14 @@ async def test_telegram_resend_status_deletes_old_message_and_sends_new_one():
 
     assert service._state["status_message_id"] == 100
     service._api.assert_any_call("deleteMessage", chat_id="42", message_id=99)
-    service._api.assert_any_call(
-        "sendMessage",
-        chat_id="42",
-        text=service._format_status_message(),
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=service._status_reply_markup(),
-    )
+    send_call = service._api.call_args_list[1]
+    assert send_call.args == ("sendMessage",)
+    assert send_call.kwargs["chat_id"] == "42"
+    assert "⚡ <b>Twitch Drops Miner</b>" in send_call.kwargs["text"]
+    assert "🕒 <b>Updated:</b>" in send_call.kwargs["text"]
+    assert send_call.kwargs["parse_mode"] == "HTML"
+    assert send_call.kwargs["disable_web_page_preview"] is True
+    assert send_call.kwargs["reply_markup"] == service._status_reply_markup()
 
 
 @pytest.mark.asyncio

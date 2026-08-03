@@ -8,8 +8,9 @@ import logging
 import os
 from collections.abc import Coroutine
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timedelta, timezone, tzinfo
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
 
@@ -27,6 +28,7 @@ logger = logging.getLogger("TwitchDrops")
 
 TELEGRAM_STATE_PATH = DATA_DIR / "telegram_state.json"
 TELEGRAM_TOKEN_PLACEHOLDER = "********"
+DEFAULT_TELEGRAM_TIMEZONE = "America/Sao_Paulo"
 RECENT_CLAIMED_LIMIT = 12
 CALLBACK_FREE_GAMES_RUN = "free_games:run"
 CALLBACK_FREE_GAMES_STOP = "free_games:stop"
@@ -338,7 +340,7 @@ class TelegramService:
             "drop_name": str(getattr(drop, "name", "Unknown drop")),
             "game_name": str(getattr(drop.campaign.game, "name", "Unknown game")),
             "campaign_url": str(getattr(drop.campaign, "campaign_url", "")),
-            "claimed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "claimed_at": self._now().isoformat(timespec="seconds"),
         }
         recent = [
             item
@@ -390,7 +392,7 @@ class TelegramService:
             claimed_at = datetime.fromisoformat(str(value))
         except ValueError:
             return self._html(value)
-        return self._html(claimed_at.astimezone().strftime("%d/%m %H:%M"))
+        return self._html(self._local_datetime(claimed_at).strftime("%d/%m %H:%M"))
 
     def _format_free_games_lines(self, account_limit: int = 4, game_limit: int = 3) -> list[str]:
         free_games = getattr(self._twitch, "free_games", None)
@@ -457,7 +459,7 @@ class TelegramService:
             stamp = datetime.fromisoformat(str(value))
         except ValueError:
             return str(value)
-        return stamp.astimezone().strftime("%d/%m %H:%M")
+        return self._local_datetime(stamp).strftime("%d/%m %H:%M")
 
     def _save_status_state(self, message_id: int | None) -> None:
         self._state["status_message_id"] = message_id
@@ -473,7 +475,34 @@ class TelegramService:
         return html.escape(str(value), quote=True)
 
     def _updated_at(self) -> str:
-        return datetime.now().astimezone().strftime("%d/%m/%Y %H:%M:%S")
+        return self._now().strftime("%d/%m/%Y %H:%M:%S")
+
+    def _now(self) -> datetime:
+        return datetime.now(self._telegram_timezone())
+
+    def _local_datetime(self, stamp: datetime) -> datetime:
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return stamp.astimezone(self._telegram_timezone())
+
+    def _telegram_timezone(self) -> tzinfo:
+        name = (
+            os.getenv("TELEGRAM_TIMEZONE")
+            or os.getenv("TDM_TIMEZONE")
+            or DEFAULT_TELEGRAM_TIMEZONE
+        )
+        if name.upper() == "UTC":
+            return timezone.utc
+        try:
+            return ZoneInfo(name)
+        except ZoneInfoNotFoundError:
+            if name != DEFAULT_TELEGRAM_TIMEZONE:
+                logger.warning(
+                    "Invalid Telegram timezone %s; falling back to %s",
+                    name,
+                    DEFAULT_TELEGRAM_TIMEZONE,
+                )
+            return timezone(timedelta(hours=-3), DEFAULT_TELEGRAM_TIMEZONE)
 
     def _channel_link(self, channel: Channel) -> str:
         channel_url = getattr(channel, "url", None)
