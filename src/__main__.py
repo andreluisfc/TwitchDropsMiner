@@ -105,7 +105,6 @@ if __name__ == "__main__":
                 except Exception:
                     logger.exception("Twitch Drops module crashed; keeping hub online")
                     client.print("Twitch Drops module crashed. Hub remains online and will retry.\n")
-                    client.print(traceback.format_exc())
                     client.gui.status.update("Twitch Drops error. Retrying soon...")
                     client.telegram.notify_error("Twitch Drops module crashed; retrying.")
                     client.telegram.queue_status_update(immediate=True)

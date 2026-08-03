@@ -572,6 +572,25 @@ def test_free_games_run_now_requires_enabled_account(monkeypatch):
     twitch.telegram.queue_status_update.assert_called_once()
 
 
+def test_free_games_run_now_requires_enough_available_memory(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    twitch = make_twitch(
+        SimpleNamespace(
+            free_games_enabled=True,
+            free_games_runner="docker",
+            free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+            free_games_schedule_hours=24,
+            free_games_accounts=[{"id": "main", "enabled": True}],
+        )
+    )
+    service = FreeGamesService(twitch)
+    monkeypatch.setattr(service, "_available_memory_mb", lambda: 512)
+
+    assert not service.run_now()
+    assert "Not enough free-tier VM memory" in service.get_status()["last_error"]
+    twitch.telegram.queue_status_update.assert_called_once()
+
+
 def test_free_games_stop_run_requests_active_container_stop():
     service = FreeGamesService(
         make_twitch(

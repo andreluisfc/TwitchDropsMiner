@@ -38,6 +38,7 @@ FREE_GAMES_BROWSER_WIDTH = 800
 FREE_GAMES_BROWSER_HEIGHT = 600
 FREE_GAMES_DOCKER_CPUS = "0.30"
 FREE_GAMES_DOCKER_MEMORY = "512m"
+FREE_GAMES_MIN_AVAILABLE_MEMORY_MB = 650
 
 
 class FreeGamesService:
@@ -143,6 +144,8 @@ class FreeGamesService:
             self._save_state()
             self._twitch.telegram.queue_status_update()
             return False
+        if not self._resources_allow_run():
+            return False
         if self._run_task is not None and not self._run_task.done():
             return False
         self._run_task = self._create_task(
@@ -157,6 +160,41 @@ class FreeGamesService:
             return False
         self._update_task = self._create_task(self._update_runner())
         return self._update_task is not None
+
+    def _resources_allow_run(self) -> bool:
+        if self._runner != "docker":
+            return True
+        available_mb = self._available_memory_mb()
+        if available_mb is None:
+            return True
+        minimum_mb = self._minimum_available_memory_mb()
+        if available_mb >= minimum_mb:
+            return True
+        self._state["last_error"] = (
+            "Not enough free-tier VM memory to start Epic safely "
+            f"({available_mb} MB available, {minimum_mb} MB required)."
+        )
+        self._save_state()
+        self._twitch.telegram.queue_status_update()
+        return False
+
+    def _minimum_available_memory_mb(self) -> int:
+        raw_value = os.getenv("FREE_GAMES_MIN_AVAILABLE_MEMORY_MB", "").strip()
+        if raw_value:
+            with suppress(ValueError):
+                return max(0, int(raw_value))
+        return FREE_GAMES_MIN_AVAILABLE_MEMORY_MB
+
+    def _available_memory_mb(self) -> int | None:
+        meminfo_path = Path("/proc/meminfo")
+        if not meminfo_path.is_file():
+            return None
+        with suppress(OSError, ValueError):
+            for line in meminfo_path.read_text(encoding="utf8").splitlines():
+                if line.startswith("MemAvailable:"):
+                    parts = line.split()
+                    return int(parts[1]) // 1024
+        return None
 
     def clear_attention(self, account_id: str) -> bool:
         if not self.account_exists(account_id):
@@ -223,6 +261,8 @@ class FreeGamesService:
         if self._run_task is not None and not self._run_task.done():
             return False
         if not self._scheduled_accounts():
+            return False
+        if not self._resources_allow_run():
             return False
         self._run_task = self._create_task(
             self._run_accounts(scheduled=True, interactive=False)
