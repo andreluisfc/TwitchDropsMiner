@@ -17,6 +17,9 @@ from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.error import URLError
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 
 import aiohttp
 
@@ -2005,18 +2008,29 @@ class FreeGamesService:
         return f"fgc-epic-{self._safe_id(account_id)}"
 
     def _vnc_status(self) -> dict[str, Any]:
-        active = bool(
+        running = bool(
             self._state.get("running")
             and self._state.get("active_account_id")
             and self._state.get("active_interactive")
         )
+        target = self.get_vnc_target_url("vnc.html") if running else None
+        active = bool(target and self._is_vnc_ready(target))
         status = {
             "enabled": self._runner == "docker",
             "url": FREE_GAMES_VNC_PROXY_URL if active else None,
             "bind": self._docker_network or "127.0.0.1:6080",
             "active": active,
+            "running": running,
         }
         return status
+
+    def _is_vnc_ready(self, target: str) -> bool:
+        request = UrlRequest(target, method="HEAD")
+        try:
+            with urlopen(request, timeout=2) as response:
+                return 200 <= int(response.status) < 500
+        except (OSError, URLError):
+            return False
 
     def get_vnc_target_url(self, path: str = "", query: str = "", *, websocket: bool = False) -> str | None:
         if self._runner != "docker" or not self._state.get("running"):

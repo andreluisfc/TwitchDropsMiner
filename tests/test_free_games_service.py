@@ -230,6 +230,7 @@ def test_free_games_status_exposes_module_metadata_and_account_lookup():
         "url": None,
         "bind": "127.0.0.1:6080",
         "active": False,
+        "running": False,
     }
     assert service.account_exists("main")
     assert not service.account_exists("missing")
@@ -764,12 +765,14 @@ def test_free_games_vnc_target_uses_active_account_and_hub_network(monkeypatch):
     service._state["running"] = True
     service._state["active_account_id"] = "main"
     service._state["active_interactive"] = True
+    monkeypatch.setattr(service, "_is_vnc_ready", lambda target: True)
 
     assert service.get_status()["vnc"] == {
         "enabled": True,
         "url": "/api/free-games/vnc/vnc.html",
         "bind": "tdm-hub",
         "active": True,
+        "running": True,
     }
     assert (
         service.get_vnc_target_url("vnc.html", "autoconnect=1")
@@ -786,6 +789,31 @@ def test_free_games_vnc_target_uses_active_account_and_hub_network(monkeypatch):
         "url": None,
         "bind": "tdm-hub",
         "active": False,
+        "running": False,
+    }
+
+
+def test_free_games_vnc_status_waits_until_browser_is_ready(monkeypatch):
+    monkeypatch.setenv("HUB_DOCKER_NETWORK", "tdm-hub")
+    settings = SimpleNamespace(
+        free_games_enabled=True,
+        free_games_runner="docker",
+        free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+        free_games_schedule_hours=24,
+        free_games_accounts=[{"id": "main"}],
+    )
+    service = FreeGamesService(make_twitch(settings))
+    service._state["running"] = True
+    service._state["active_account_id"] = "main"
+    service._state["active_interactive"] = True
+    monkeypatch.setattr(service, "_is_vnc_ready", lambda target: False)
+
+    assert service.get_status()["vnc"] == {
+        "enabled": True,
+        "url": None,
+        "bind": "tdm-hub",
+        "active": False,
+        "running": True,
     }
 
 
