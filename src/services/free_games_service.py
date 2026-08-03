@@ -138,22 +138,37 @@ async function ensureSignedIn(page) {
   }
   log('Submitted Epic login form.');
 
-  try {
-    await page.waitForURL('**/id/login/mfa**', { timeout: 8000 });
-    if (!cfg.eg_otpkey) throw new Error('mfa_required');
+  const outcome = (promise, value) => promise.then(() => value).catch(() => new Promise(() => {}));
+  const loginOutcome = await Promise.race([
+    outcome(page.waitForURL('**/free-games**', { timeout: 25000 }), 'signed-in'),
+    outcome(page.locator('input[name="code-input-0"], input[autocomplete="one-time-code"]').first().waitFor({ timeout: 25000 }), 'mfa'),
+    outcome(page.locator('.h_captcha_challenge iframe, iframe[src*="hcaptcha.com"]').first().waitFor({ timeout: 25000 }), 'captcha'),
+    outcome(page.locator('#form-error-message').first().waitFor({ timeout: 25000 }), 'form-error'),
+    sleep(26000).then(() => 'pending'),
+  ]);
+  log('Epic login outcome:', loginOutcome || 'unknown', page.url());
+
+  if (loginOutcome === 'mfa') {
+    if (!cfg.eg_otpkey) {
+      throw new Error('mfa_required');
+    }
     const otp = authenticator.generate(cfg.eg_otpkey);
     await page.locator('input[name="code-input-0"]').pressSequentially(otp.toString());
     await clickIfVisible(page, 'button[type="submit"]', 5000);
-  } catch (error) {
-    if (String(error?.message || error).includes('mfa_required')) throw error;
+  } else if (loginOutcome === 'captcha') {
+    throw new Error('captcha_required');
+  } else if (loginOutcome === 'form-error') {
+    const errorText = await page.locator('#form-error-message').innerText({ timeout: 3000 }).catch(() => '');
+    throw new Error(`login_failed: ${errorText}`);
   }
 
-  await page.waitForURL('**/free-games**', { timeout: cfg.timeout }).catch(() => {});
+  await page.waitForURL('**/free-games**', { timeout: 30000 }).catch(() => {});
   await page.waitForLoadState('domcontentloaded').catch(() => {});
-  const signedIn = await page.locator('egs-navigation').getAttribute('isloggedin').catch(() => null);
+  const signedIn = await page.locator('egs-navigation').getAttribute('isloggedin', { timeout: 5000 }).catch(() => null);
   log('Epic login confirmation:', signedIn || 'unknown', page.url());
   if (signedIn !== 'true') {
-    throw new Error('login_not_confirmed');
+    const body = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    throw new Error(`login_not_confirmed: ${body.slice(0, 300)}`);
   }
 }
 
@@ -1418,6 +1433,13 @@ class FreeGamesService:
                 "required": True,
                 "reason": "login_timeout",
                 "message": "Epic login timed out. Start a manual run and use Browser to sign in.",
+                "account_id": account_id,
+            }
+        if "mfa_required" in lower_text or "two-factor" in lower_text:
+            return {
+                "required": True,
+                "reason": "mfa_required",
+                "message": "Epic MFA required. Configure an Epic OTP key or start a manual run.",
                 "account_id": account_id,
             }
         if "not signed in anymore" in lower_text or "please login" in lower_text:
