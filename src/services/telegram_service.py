@@ -444,6 +444,12 @@ class TelegramService:
             if account_attention.get("required"):
                 icon = "🚨"
             lines.append(f"{icon} <b>{self._html(account.get('name') or account.get('id'))}</b>")
+            pending_games = account.get("pending_claim_games") or []
+            if pending_games:
+                for game in pending_games[:game_limit]:
+                    title = game.get("title") or "Unknown game"
+                    url = game.get("checkout_url") or game.get("url") or ""
+                    lines.append(f"  • 🎯 Pending: {self._game_campaign_link(title, url)}")
             claimed_games = account.get("claimed_games") or []
             if claimed_games:
                 for game in claimed_games[:game_limit]:
@@ -455,7 +461,7 @@ class TelegramService:
                 lines.append(f"  • {self._html(account_attention['message'])}")
             elif account.get("last_error"):
                 lines.append(f"  • {self._html(account['last_error'])}")
-            else:
+            elif not pending_games:
                 lines.append("  • No claimed games recorded yet.")
             account_automation = account.get("automation") or {}
             if account_automation.get("blocked_reason"):

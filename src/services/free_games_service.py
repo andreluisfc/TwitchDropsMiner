@@ -45,6 +45,213 @@ FREE_GAMES_EXCLUSIVE_SETTLE_SECONDS = 15
 FREE_GAMES_CATALOG_REFRESH_HOURS = 6
 EPIC_CATALOG_URL = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
 EPIC_STORE_BASE_URL = "https://store.epicgames.com"
+FREE_GAMES_DIRECT_SCRIPT_NAME = "tdm-epic-direct.js"
+FREE_GAMES_DIRECT_SCRIPT = r"""
+import { chromium } from 'patchright';
+import { authenticator } from 'otplib';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { cfg } from 'file:///fgc/src/config.js';
+import { datetime, handleSIGINT } from 'file:///fgc/src/util.js';
+
+const targets = JSON.parse(process.env.TDM_EPIC_CLAIM_TARGETS || '[]');
+const accountId = process.env.TDM_EPIC_ACCOUNT_ID || process.env.EG_EMAIL || 'account';
+const dbPath = '/fgc/data/epic-games.json';
+const URL_LOGIN = 'https://www.epicgames.com/id/login?lang=en-US&noHostRedirect=true';
+
+const readDb = () => {
+  if (!existsSync(dbPath)) return {};
+  try {
+    const data = JSON.parse(readFileSync(dbPath, 'utf8') || '{}');
+    return data && typeof data === 'object' ? data : {};
+  } catch {
+    return {};
+  }
+};
+
+const writeDb = db => writeFileSync(dbPath, JSON.stringify(db, null, 2));
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const log = (...args) => console.log(datetime(), '[tdm-direct]', ...args);
+const fail = (db, user, target, status, detail = '') => {
+  db[user] ||= {};
+  db[user][target.id] = {
+    title: target.title,
+    url: target.url || target.checkout_url,
+    checkout_url: target.checkout_url,
+    time: datetime(),
+    status,
+    detail,
+  };
+  writeDb(db);
+};
+
+async function clickIfVisible(scope, selector, timeout = 1500) {
+  const locator = scope.locator(selector).first();
+  try {
+    await locator.click({ delay: 25, timeout });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function loginIfNeeded(page, targetUrl) {
+  if (!page.url().includes('/id/login') && await page.locator('#email').count().catch(() => 0) === 0) {
+    return;
+  }
+
+  if (!cfg.eg_email || !cfg.eg_password) {
+    throw new Error('login_required');
+  }
+
+  log('Signing in with configured Epic account.');
+  if (!page.url().includes('/id/login')) {
+    await page.goto(`${URL_LOGIN}&redirectUrl=${encodeURIComponent(targetUrl)}`, { waitUntil: 'domcontentloaded' });
+  }
+  await page.locator('#email').fill(cfg.eg_email);
+  await clickIfVisible(page, 'button#continue', 5000);
+  await page.locator('#password').fill(cfg.eg_password);
+  await clickIfVisible(page, 'button#sign-in', 5000);
+
+  try {
+    await page.waitForURL('**/id/login/mfa**', { timeout: 8000 });
+    if (!cfg.eg_otpkey) throw new Error('mfa_required');
+    const otp = authenticator.generate(cfg.eg_otpkey);
+    await page.locator('input[name="code-input-0"]').pressSequentially(otp.toString());
+    await clickIfVisible(page, 'button[type="submit"]', 5000);
+  } catch (error) {
+    if (String(error?.message || error).includes('mfa_required')) throw error;
+  }
+
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+}
+
+async function displayName(page) {
+  try {
+    const value = await page.locator('egs-navigation').getAttribute('displayname', { timeout: 3000 });
+    if (value && value !== 'null') return value;
+  } catch {}
+  return accountId;
+}
+
+async function claimTarget(page, db, user, target) {
+  db[user] ||= {};
+  const previous = db[user][target.id];
+  if (previous && ['claimed', 'existed', 'manual'].includes(previous.status)) {
+    log('Already recorded, skipping:', target.title);
+    return true;
+  }
+
+  const targetUrl = target.checkout_url || target.url;
+  log('Opening checkout:', target.title, targetUrl);
+  await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+  await loginIfNeeded(page, targetUrl);
+  if (!page.url().includes('/purchase') && target.checkout_url) {
+    await page.goto(target.checkout_url, { waitUntil: 'domcontentloaded' });
+  }
+
+  await clickIfVisible(page, 'button:has-text("Continue")', 2500);
+  await clickIfVisible(page, 'button:has-text("Yes, buy now")', 2500);
+
+  const iframeHandle = await page.waitForSelector('#webPurchaseContainer iframe', { timeout: cfg.timeout }).catch(() => null);
+  if (!iframeHandle) {
+    const body = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    if (/in library|owned|already/i.test(body)) {
+      fail(db, user, target, 'existed', 'Already in library.');
+      log('Already in library:', target.title);
+      return true;
+    }
+    fail(db, user, target, 'failed:no-checkout', body.slice(0, 500));
+    return false;
+  }
+
+  const frame = await iframeHandle.contentFrame();
+  if (!frame) {
+    fail(db, user, target, 'failed:no-checkout-frame');
+    return false;
+  }
+
+  if (await frame.locator(':has-text("unavailable in your region")').count().catch(() => 0)) {
+    fail(db, user, target, 'unavailable-in-region');
+    return true;
+  }
+
+  if (await frame.locator('.payment-pin-code').count().catch(() => 0)) {
+    if (!cfg.eg_parentalpin) {
+      fail(db, user, target, 'failed:parental-pin-required');
+      return false;
+    }
+    await frame.locator('input.payment-pin-code__input').first().pressSequentially(cfg.eg_parentalpin);
+    await clickIfVisible(frame, 'button:has-text("Continue")', 5000);
+  }
+
+  if (cfg.dryrun) {
+    fail(db, user, target, 'skipped:dryrun');
+    return true;
+  }
+
+  const clicked = await clickIfVisible(frame, 'button:has-text("Add to library"):not(:has(.payment-loading--loading))', cfg.timeout)
+    || await clickIfVisible(frame, 'button:has-text("Place Order"):not(:has(.payment-loading--loading))', cfg.timeout);
+  if (!clicked) {
+    const text = await frame.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    if (/already|owned|library/i.test(text)) {
+      fail(db, user, target, 'existed', 'Already in library.');
+      return true;
+    }
+    fail(db, user, target, 'failed:no-order-button', text.slice(0, 500));
+    return false;
+  }
+
+  await clickIfVisible(frame, 'button:has-text("I Accept")', 8000);
+  await clickIfVisible(frame, 'button:has-text("I Agree")', 8000);
+  await sleep(5000);
+
+  if (await frame.locator('#h_captcha_challenge_checkout_free_prod iframe').count().catch(() => 0)) {
+    fail(db, user, target, 'failed:captcha-required');
+    return false;
+  }
+
+  const confirmation = await frame.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+  const status = /thank|success|all set|library|receipt/i.test(confirmation) ? 'claimed' : 'submitted';
+  fail(db, user, target, status, confirmation.slice(0, 500));
+  log(`${status}:`, target.title);
+  return status === 'claimed' || status === 'submitted';
+}
+
+if (!targets.length) {
+  log('No current catalog targets to claim.');
+  process.exit(0);
+}
+
+log('Started direct Epic checkout runner with', targets.length, 'target(s).');
+const context = await chromium.launchPersistentContext(cfg.dir.browser, {
+  headless: false,
+  viewport: { width: cfg.width, height: cfg.height },
+  locale: 'en-US',
+  handleSIGINT: false,
+  args: ['--hide-crash-restore-bubble', '--ignore-gpu-blocklist', '--enable-unsafe-webgpu'],
+});
+handleSIGINT(context);
+if (!cfg.debug) context.setDefaultTimeout(cfg.timeout);
+await context.addCookies([
+  { name: 'OptanonAlertBoxClosed', value: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), domain: '.epicgames.com', path: '/' },
+  { name: 'HasAcceptedAgeGates', value: 'USK:9007199254740991,general:18,EPIC SUGGESTED RATING:18', domain: 'store.epicgames.com', path: '/' },
+]);
+
+const page = context.pages().length ? context.pages()[0] : await context.newPage();
+const db = readDb();
+let ok = true;
+let user = accountId;
+try {
+  for (const target of targets) {
+    user = await displayName(page);
+    const targetOk = await claimTarget(page, db, user, target);
+    ok = ok && targetOk;
+  }
+} finally {
+  await context.close();
+}
+process.exit(ok ? 0 : 1);
+""".strip()
 
 
 class FreeGamesService:
@@ -845,6 +1052,10 @@ class FreeGamesService:
         interactive: bool = True,
     ) -> list[str]:
         account_id = str(account["id"])
+        direct_targets = self._catalog_claim_targets(account_id)
+        use_direct_runner = bool(direct_targets and self._use_direct_catalog_runner())
+        if use_direct_runner:
+            self._write_direct_script(account_dir)
         host_account_dir = self._host_account_dir(account_id, account_dir)
         container_name = self._docker_container_name(account_id)
         command = [
@@ -883,10 +1094,17 @@ class FreeGamesService:
             "TIMEOUT",
             "WIDTH",
             "HEIGHT",
+            "TDM_EPIC_ACCOUNT_ID",
+            "TDM_EPIC_CLAIM_TARGETS",
         ):
             if env.get(key):
                 command.extend(["-e", key])
-        command.extend([self._image, "node", "epic-games"])
+        runner_script = (
+            f"/fgc/data/{FREE_GAMES_DIRECT_SCRIPT_NAME}"
+            if use_direct_runner
+            else "epic-games"
+        )
+        command.extend([self._image, "node", runner_script])
         return command
 
     async def _prepare_docker_container(
@@ -945,6 +1163,7 @@ class FreeGamesService:
             "TIMEOUT": str(self._claimer_action_timeout_seconds()),
             "WIDTH": str(FREE_GAMES_BROWSER_WIDTH),
             "HEIGHT": str(FREE_GAMES_BROWSER_HEIGHT),
+            "TDM_EPIC_ACCOUNT_ID": str(account.get("id") or ""),
         }
         mapping = {
             "email": "EG_EMAIL",
@@ -957,6 +1176,9 @@ class FreeGamesService:
             value = str(account.get(setting_key) or "").strip()
             if value:
                 env[env_key] = value
+        claim_targets = self._catalog_claim_targets(str(account.get("id") or ""))
+        if claim_targets and self._use_direct_catalog_runner():
+            env["TDM_EPIC_CLAIM_TARGETS"] = json.dumps(claim_targets, separators=(",", ":"))
         return env
 
     def _claimer_login_timeout_seconds(self) -> int:
@@ -969,6 +1191,7 @@ class FreeGamesService:
         account_id = str(account.get("id"))
         account_state = self._state.get("accounts", {}).get(account_id, {})
         claims = self._read_epic_claims(account_id)
+        claim_targets = self._catalog_claim_targets(account_id)
         attention = self._account_attention_info(account_id)
         automation = self._account_automation_info(account, attention)
         return {
@@ -989,6 +1212,7 @@ class FreeGamesService:
             "claimed_games": claims["claimed"],
             "failed_games": claims["failed"],
             "known_games_count": claims["known_count"],
+            "pending_claim_games": claim_targets,
         }
 
     def _source_info(self) -> dict[str, Any]:
@@ -1243,9 +1467,72 @@ class FreeGamesService:
             redacted = re.sub(pattern, r"\1[redacted]", redacted)
         return redacted
 
+    def _write_direct_script(self, account_dir: Path) -> None:
+        script_path = account_dir / FREE_GAMES_DIRECT_SCRIPT_NAME
+        if script_path.is_file() and script_path.read_text(encoding="utf8") == FREE_GAMES_DIRECT_SCRIPT:
+            return
+        script_path.write_text(FREE_GAMES_DIRECT_SCRIPT, encoding="utf8")
+
+    def _use_direct_catalog_runner(self) -> bool:
+        return os.getenv("FREE_GAMES_USE_DIRECT_CATALOG", "1").strip() != "0"
+
+    def _catalog_claim_targets(self, account_id: str) -> list[dict[str, Any]]:
+        completed_ids = self._catalog_claim_completed_ids(account_id)
+        targets: list[dict[str, Any]] = []
+        for item in self._catalog_status().get("current", []):
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id") or "")
+            title = str(item.get("title") or item_id)
+            if item_id in completed_ids or title.lower() in completed_ids:
+                continue
+            checkout_url = str(item.get("checkout_url") or "")
+            store_url = str(item.get("url") or "")
+            if not checkout_url and not store_url:
+                continue
+            targets.append(
+                {
+                    "id": item_id,
+                    "namespace": item.get("namespace") or "",
+                    "title": title,
+                    "url": store_url,
+                    "checkout_url": checkout_url,
+                    "end_at": item.get("end_at"),
+                }
+            )
+        return targets
+
+    def _catalog_claim_completed_ids(self, account_id: str) -> set[str]:
+        completed_statuses = {"claimed", "existed", "manual", "submitted"}
+        completed: set[str] = set()
+        data = self._read_epic_claim_db(account_id)
+        for user_games in data.values():
+            if not isinstance(user_games, dict):
+                continue
+            for game_id, game in user_games.items():
+                if not isinstance(game, dict):
+                    continue
+                status = str(game.get("status") or "")
+                if status in completed_statuses:
+                    completed.add(str(game_id))
+                    title = str(game.get("title") or "").strip().lower()
+                    if title:
+                        completed.add(title)
+        return completed
+
+    def _read_epic_claim_db(self, account_id: str) -> dict[str, Any]:
+        for db_path in self._epic_claim_db_paths(account_id):
+            data = json_load(db_path, {}, merge=False)
+            if isinstance(data, dict) and data:
+                return data
+        return {}
+
+    def _epic_claim_db_paths(self, account_id: str) -> list[Path]:
+        account_dir = self._account_data_dir(account_id)
+        return [account_dir / "epic-games.json", account_dir / "db.json"]
+
     def _read_epic_claims(self, account_id: str, limit: int = 8) -> dict[str, Any]:
-        db_path = self._account_data_dir(account_id) / "db.json"
-        data = json_load(db_path, {}, merge=False)
+        data = self._read_epic_claim_db(account_id)
         claimed: list[dict[str, Any]] = []
         failed: list[dict[str, Any]] = []
         known_count = 0
@@ -1267,7 +1554,7 @@ class FreeGamesService:
                     "time": game.get("time") or "",
                     "status": game.get("status") or "",
                 }
-                if item["status"] == "claimed":
+                if item["status"] in {"claimed", "existed", "manual", "submitted"}:
                     claimed.append(item)
                 elif str(item["status"]).startswith("failed"):
                     failed.append(item)

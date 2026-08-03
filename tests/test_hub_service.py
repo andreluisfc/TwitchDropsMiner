@@ -99,7 +99,12 @@ def test_hub_service_returns_twitch_and_epic_modules():
                     "detected_from": "accounts/main/last-run.log",
                 },
                 "accounts": [
-                    {"id": "main", "enabled": True, "claimed_games": [{"title": "Game A"}]},
+                    {
+                        "id": "main",
+                        "enabled": True,
+                        "claimed_games": [{"title": "Game A"}],
+                        "pending_claim_games": [{"title": "OTXO"}],
+                    },
                     {"id": "disabled", "enabled": False, "claimed_games": []},
                 ],
                 "automation": {
@@ -163,6 +168,7 @@ def test_hub_service_returns_twitch_and_epic_modules():
         "enabled_accounts": 1,
         "scheduled_accounts": 1,
         "claimed_games": 1,
+        "pending_claims": 1,
         "current_freebies": 1,
         "upcoming_freebies": 1,
     }

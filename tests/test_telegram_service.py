@@ -257,6 +257,57 @@ def test_telegram_free_games_lines_include_attention_message():
     assert "  • ⏸ Automation blocked: attention required" in lines
 
 
+def test_telegram_free_games_lines_include_pending_claims():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(
+            return_value={
+                "enabled": True,
+                "running": False,
+                "automation": {"paused": False},
+                "attention": {"required": False},
+                "accounts": [
+                    {
+                        "id": "main",
+                        "name": "Main",
+                        "last_run_success": None,
+                        "attention": {"required": False},
+                        "pending_claim_games": [
+                            {
+                                "title": "OTXO",
+                                "checkout_url": "https://store.epicgames.com/pt-BR/purchase",
+                            }
+                        ],
+                        "claimed_games": [],
+                        "automation": {"eligible": True},
+                    }
+                ],
+            }
+        )
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="",
+            telegram_chat_id="",
+            telegram_enabled=False,
+            telegram_panel_url="",
+            telegram_notifications={},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        free_games=free_games,
+    )
+
+    lines = TelegramService(twitch)._format_free_games_lines()
+
+    assert "⏳ <b>Main</b>" in lines
+    assert (
+        '  • 🎯 Pending: <a href="https://store.epicgames.com/pt-BR/purchase">OTXO</a>'
+        in lines
+    )
+    assert "  • No claimed games recorded yet." not in lines
+
+
 def test_telegram_drop_claimed_updates_status_without_separate_message(monkeypatch):
     monkeypatch.setattr("src.services.telegram_service.json_save", MagicMock())
     twitch = SimpleNamespace(

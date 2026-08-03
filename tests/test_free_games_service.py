@@ -58,6 +58,52 @@ def test_free_games_service_reads_epic_claims(monkeypatch):
         assert status["accounts"][0]["failed_games"][0]["title"] == "Game B"
 
 
+def test_free_games_service_reads_upstream_epic_games_database(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        temp_path = Path(temp_dir)
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", temp_path)
+        account_dir = temp_path / "accounts" / "main"
+        account_dir.mkdir(parents=True)
+        (account_dir / "epic-games.json").write_text(
+            json.dumps(
+                {
+                    "EpicUser": {
+                        "offer-a": {
+                            "title": "Claimed Upstream Game",
+                            "url": "https://example.com/claimed",
+                            "time": "2026-08-03 12:00:00.000",
+                            "status": "claimed",
+                        },
+                        "offer-b": {
+                            "title": "Submitted Upstream Game",
+                            "url": "https://example.com/submitted",
+                            "time": "2026-08-03 12:05:00.000",
+                            "status": "submitted",
+                        },
+                    }
+                }
+            ),
+            encoding="utf8",
+        )
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main", "name": "Main"}],
+                )
+            )
+        )
+
+        status = service.get_status()
+
+    titles = [game["title"] for game in status["accounts"][0]["claimed_games"]]
+    assert titles == ["Submitted Upstream Game", "Claimed Upstream Game"]
+    assert status["accounts"][0]["known_games_count"] == 2
+
+
 def test_free_games_service_parses_epic_catalog_freebies(monkeypatch):
     monkeypatch.setenv("EPIC_CATALOG_LOCALE", "pt-BR")
     monkeypatch.setenv("EPIC_CATALOG_COUNTRY", "BR")
@@ -641,6 +687,48 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
     assert "SHOW=0" in background_command
     assert "/opt/tdm/data/free-games/accounts/main:/fgc/data" in command
     assert "127.0.0.1:6080:6080" in command
+
+
+def test_free_games_docker_command_uses_direct_catalog_runner_for_pending_claims(monkeypatch):
+    monkeypatch.setenv("HOST_DATA_DIR", "/opt/tdm/data")
+    settings = SimpleNamespace(
+        free_games_enabled=True,
+        free_games_runner="docker",
+        free_games_image="ghcr.io/vogler/free-games-claimer:dev",
+        free_games_schedule_hours=24,
+        free_games_accounts=[],
+    )
+    service = FreeGamesService(make_twitch(settings))
+    service._state["catalog"] = {
+        "current": [
+            {
+                "id": "offer-a",
+                "namespace": "namespace-a",
+                "title": "Free Game A",
+                "url": "https://store.epicgames.com/pt-BR/p/free-game-a",
+                "checkout_url": (
+                    "https://store.epicgames.com/pt-BR/purchase"
+                    "?offers=1-namespace-a-offer-a"
+                ),
+                "end_at": "2026-08-06T15:00:00.000Z",
+            }
+        ],
+        "upcoming": [],
+    }
+
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        temp_path = Path(temp_dir)
+        command = service._docker_command({"id": "main"}, temp_path)
+        env = service._account_env({"id": "main"}, temp_path)
+
+        assert (temp_path / "tdm-epic-direct.js").is_file()
+
+    assert command[-2:] == ["node", "/fgc/data/tdm-epic-direct.js"]
+    assert "TDM_EPIC_CLAIM_TARGETS" in command
+    assert env["TDM_EPIC_ACCOUNT_ID"] == "main"
+    targets = json.loads(env["TDM_EPIC_CLAIM_TARGETS"])
+    assert targets[0]["id"] == "offer-a"
+    assert targets[0]["checkout_url"].endswith("offers=1-namespace-a-offer-a")
 
 
 def test_free_games_docker_command_can_join_hub_network(monkeypatch):

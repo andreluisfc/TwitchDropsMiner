@@ -366,6 +366,9 @@ class EpicFreeGamesModuleAdapter:
                 "claimed_games": sum(
                     len(account.get("claimed_games") or []) for account in accounts
                 ),
+                "pending_claims": sum(
+                    len(account.get("pending_claim_games") or []) for account in accounts
+                ),
                 "current_freebies": len(catalog.get("current") or []),
                 "upcoming_freebies": len(catalog.get("upcoming") or []),
             },

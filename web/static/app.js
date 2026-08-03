@@ -2639,6 +2639,21 @@ function updateFreeGamesStatus(status) {
                 el.appendChild(makeElement('div', { class: 'muted-text' }, accountRunLog));
                 appendFreeGamesLogButton(el, 'account-run', 'View log', account.id);
             }
+            const pendingGames = account.pending_claim_games || [];
+            if (pendingGames.length) {
+                const pendingList = makeElement('ul', { class: 'free-games-game-list' });
+                pendingGames.slice(0, 4).forEach(game => {
+                    pendingList.appendChild(makeElement('li', {}, '', li => {
+                        li.appendChild(makeElement('span', { class: 'muted-text' }, 'Pending: '));
+                        if (game.checkout_url) {
+                            li.appendChild(makeElement('a', { href: game.checkout_url, target: '_blank', rel: 'noopener noreferrer' }, game.title || game.id));
+                        } else {
+                            li.appendChild(document.createTextNode(game.title || game.id));
+                        }
+                    }));
+                });
+                el.appendChild(pendingList);
+            }
             const games = account.claimed_games || [];
             if (games.length) {
                 const list = makeElement('ul', { class: 'free-games-game-list' });
