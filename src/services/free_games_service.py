@@ -50,13 +50,31 @@ FREE_GAMES_DIRECT_SCRIPT = r"""
 import { chromium } from 'patchright';
 import { authenticator } from 'otplib';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { cfg } from 'file:///fgc/src/config.js';
-import { datetime, handleSIGINT } from 'file:///fgc/src/util.js';
 
 const targets = JSON.parse(process.env.TDM_EPIC_CLAIM_TARGETS || '[]');
 const accountId = process.env.TDM_EPIC_ACCOUNT_ID || process.env.EG_EMAIL || 'account';
 const dbPath = '/fgc/data/epic-games.json';
 const URL_LOGIN = 'https://www.epicgames.com/id/login?lang=en-US&noHostRedirect=true';
+const cfg = {
+  debug: process.env.DEBUG == '1' || process.env.PWDEBUG == '1',
+  dryrun: process.env.DRYRUN == '1',
+  width: Number(process.env.WIDTH) || 800,
+  height: Number(process.env.HEIGHT) || 600,
+  timeout: (Number(process.env.TIMEOUT) || 180) * 1000,
+  eg_email: process.env.EG_EMAIL || process.env.EMAIL,
+  eg_password: process.env.EG_PASSWORD || process.env.PASSWORD,
+  eg_otpkey: process.env.EG_OTPKEY,
+  eg_parentalpin: process.env.EG_PARENTALPIN,
+  dir: {
+    browser: process.env.BROWSER_DIR || '/fgc/data/browser',
+  },
+};
+const datetime = (d = new Date()) => d.toISOString().replace('T', ' ').replace('Z', '');
+const handleSIGINT = context => process.on('SIGINT', async () => {
+  console.error('\nInterrupted by SIGINT. Exit!');
+  process.exitCode = 130;
+  if (context) await context.close();
+});
 
 const readDb = () => {
   if (!existsSync(dbPath)) return {};
