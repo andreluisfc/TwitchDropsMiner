@@ -62,6 +62,8 @@ const cfg = {
   width: Number(process.env.WIDTH) || 800,
   height: Number(process.env.HEIGHT) || 600,
   timeout: (Number(process.env.TIMEOUT) || 180) * 1000,
+  login_timeout: (Number(process.env.LOGIN_TIMEOUT) || 840) * 1000,
+  interactive: !['0', 'false', 'False'].includes(String(process.env.SHOW || '1')),
   eg_email: process.env.EG_EMAIL || process.env.EMAIL,
   eg_password: process.env.EG_PASSWORD || process.env.PASSWORD,
   eg_otpkey: process.env.EG_OTPKEY,
@@ -113,6 +115,28 @@ async function clickIfVisible(scope, selector, timeout = 1500) {
   }
 }
 
+async function signedIn(page) {
+  const value = await page.locator('egs-navigation').getAttribute('isloggedin', { timeout: 5000 }).catch(() => null);
+  return value === 'true';
+}
+
+async function waitForManualLogin(page, reason) {
+  log('Manual Epic login required:', reason);
+  log('Keep this run active and open the Epic browser from the hub panel.');
+  const deadline = Date.now() + cfg.login_timeout;
+  while (Date.now() < deadline) {
+    if (await signedIn(page)) {
+      log('Manual Epic login completed.');
+      return;
+    }
+    if (!page.url().includes('store.epicgames.com') && !page.url().includes('epicgames.com/id/login')) {
+      await page.goto(URL_CLAIM, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    }
+    await sleep(5000);
+  }
+  throw new Error(`${reason}_manual_timeout`);
+}
+
 async function ensureSignedIn(page) {
   log('Checking Epic login state.');
   await page.goto(URL_CLAIM, { waitUntil: 'domcontentloaded' });
@@ -150,23 +174,39 @@ async function ensureSignedIn(page) {
 
   if (loginOutcome === 'mfa') {
     if (!cfg.eg_otpkey) {
-      throw new Error('mfa_required');
+      if (cfg.interactive) {
+        await waitForManualLogin(page, 'mfa_required');
+      } else {
+        throw new Error('mfa_required');
+      }
+    } else {
+      const otp = authenticator.generate(cfg.eg_otpkey);
+      await page.locator('input[name="code-input-0"]').pressSequentially(otp.toString());
+      await clickIfVisible(page, 'button[type="submit"]', 5000);
     }
-    const otp = authenticator.generate(cfg.eg_otpkey);
-    await page.locator('input[name="code-input-0"]').pressSequentially(otp.toString());
-    await clickIfVisible(page, 'button[type="submit"]', 5000);
   } else if (loginOutcome === 'captcha') {
-    throw new Error('captcha_required');
+    if (cfg.interactive) {
+      await waitForManualLogin(page, 'captcha_required');
+    } else {
+      throw new Error('captcha_required');
+    }
   } else if (loginOutcome === 'form-error') {
     const errorText = await page.locator('#form-error-message').innerText({ timeout: 3000 }).catch(() => '');
-    throw new Error(`login_failed: ${errorText}`);
+    if (cfg.interactive) {
+      log('Epic login form error:', errorText || '(empty)');
+      await waitForManualLogin(page, 'login_failed');
+    } else {
+      throw new Error(`login_failed: ${errorText}`);
+    }
+  } else if (loginOutcome === 'pending' && cfg.interactive) {
+    await waitForManualLogin(page, 'login_pending');
   }
 
   await page.waitForURL('**/free-games**', { timeout: 30000 }).catch(() => {});
   await page.waitForLoadState('domcontentloaded').catch(() => {});
-  const signedIn = await page.locator('egs-navigation').getAttribute('isloggedin', { timeout: 5000 }).catch(() => null);
-  log('Epic login confirmation:', signedIn || 'unknown', page.url());
-  if (signedIn !== 'true') {
+  const confirmed = await signedIn(page);
+  log('Epic login confirmation:', confirmed ? 'true' : 'unknown', page.url());
+  if (!confirmed) {
     const body = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
     throw new Error(`login_not_confirmed: ${body.slice(0, 300)}`);
   }
@@ -1435,6 +1475,13 @@ class FreeGamesService:
                 "required": True,
                 "reason": "login_timeout",
                 "message": "Epic login timed out. Start a manual run and use Browser to sign in.",
+                "account_id": account_id,
+            }
+        if "manual_timeout" in lower_text:
+            return {
+                "required": True,
+                "reason": "manual_login_timeout",
+                "message": "Epic manual login timed out. Start a manual Epic run and keep Browser open.",
                 "account_id": account_id,
             }
         if "mfa_required" in lower_text or "two-factor" in lower_text:

@@ -2607,7 +2607,10 @@ function updateFreeGamesStatus(status) {
         const card = makeElement('div', { class: 'free-games-account-card' }, '', el => {
             el.appendChild(makeElement('div', { class: 'free-games-account-title' }, '', header => {
                 header.appendChild(makeElement('h3', {}, account.name || account.email || account.id));
-                header.appendChild(makeElement('button', { type: 'button', class: 'small-btn' }, account.id === status.active_account_id ? 'Running' : 'Run', button => {
+                const runLabel = account.id === status.active_account_id
+                    ? 'Running'
+                    : account.attention?.required ? 'Manual login' : 'Run';
+                header.appendChild(makeElement('button', { type: 'button', class: 'small-btn' }, runLabel, button => {
                     button.disabled = busy || account.enabled === false;
                     button.addEventListener('click', () => runFreeGamesNow(account.id));
                 }));
@@ -2916,9 +2919,12 @@ async function runFreeGamesNow(accountId = null) {
         }
         if (resultDiv) {
             resultDiv.className = 'verify-result success';
-            resultDiv.textContent = 'Epic run started.';
+            resultDiv.textContent = accountId
+                ? 'Epic manual run started. Open Browser in the Epic status while it is active.'
+                : 'Epic run started.';
         }
         fetchFreeGamesStatus();
+        setTimeout(fetchFreeGamesStatus, 2500);
     } catch (error) {
         if (resultDiv) {
             resultDiv.className = 'verify-result error';
