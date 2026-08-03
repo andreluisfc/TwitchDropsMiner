@@ -451,7 +451,15 @@ class FreeGamesService:
         else:
             command.extend(["-p", "127.0.0.1:6080:6080"])
         env = self._account_env(account, account_dir)
-        for key in ("EG_EMAIL", "EG_PASSWORD", "EG_OTPKEY", "EG_PARENTALPIN", "VNC_PASSWORD"):
+        for key in (
+            "EG_EMAIL",
+            "EG_PASSWORD",
+            "EG_OTPKEY",
+            "EG_PARENTALPIN",
+            "VNC_PASSWORD",
+            "LOGIN_TIMEOUT",
+            "TIMEOUT",
+        ):
             if env.get(key):
                 command.extend(["-e", key])
         command.extend([self._image, "node", "epic-games"])
@@ -509,6 +517,8 @@ class FreeGamesService:
         env = {
             "BROWSER_DIR": str(account_dir / "browser"),
             "SCREENSHOTS_DIR": str(account_dir / "screenshots"),
+            "LOGIN_TIMEOUT": str(self._claimer_login_timeout_seconds()),
+            "TIMEOUT": str(self._claimer_action_timeout_seconds()),
         }
         mapping = {
             "email": "EG_EMAIL",
@@ -522,6 +532,12 @@ class FreeGamesService:
             if value:
                 env[env_key] = value
         return env
+
+    def _claimer_login_timeout_seconds(self) -> int:
+        return max(180, self._run_timeout_seconds() - 60)
+
+    def _claimer_action_timeout_seconds(self) -> int:
+        return max(60, min(180, self._claimer_login_timeout_seconds()))
 
     def _account_status(self, account: dict[str, Any]) -> dict[str, Any]:
         account_id = str(account.get("id"))

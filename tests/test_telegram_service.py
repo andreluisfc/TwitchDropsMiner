@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
 import pytest
 
 from src.services.telegram_service import TelegramService
@@ -769,3 +770,31 @@ async def test_telegram_callback_ignores_other_chats():
 
     free_games.run_now.assert_not_called()
     service._api.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_telegram_api_logs_transient_network_errors_without_traceback(monkeypatch, caplog):
+    class FailingSession:
+        closed = False
+
+        def post(self, *args, **kwargs):
+            raise aiohttp.ClientOSError(104, "Connection reset by peer")
+
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="123:secret",
+            telegram_chat_id="42",
+            telegram_enabled=True,
+            telegram_panel_url="",
+            telegram_notifications={"status_message": True},
+        )
+    )
+    service = TelegramService(twitch)
+    monkeypatch.setattr("src.services.telegram_service.aiohttp.ClientSession", FailingSession)
+
+    with caplog.at_level("WARNING", logger="TwitchDrops"):
+        assert await service._api("getUpdates") is None
+
+    assert "Telegram API call failed for getUpdates" in caplog.text
+    assert "Connection reset by peer" in caplog.text
+    assert "Traceback" not in caplog.text

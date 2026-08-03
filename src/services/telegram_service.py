@@ -695,8 +695,11 @@ class TelegramService:
                     logger.warning("Telegram API call failed for %s: %s", method, data)
                     return None
                 return data
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as exc:
+            logger.warning("Telegram API call failed for %s: %s", method, exc)
+            return None
         except Exception:
-            logger.warning("Telegram API call failed for %s", method, exc_info=True)
+            logger.warning("Unexpected Telegram API failure for %s", method, exc_info=True)
             return None
 
     def _notification_enabled(self, key: str) -> bool:
