@@ -131,8 +131,8 @@ class Twitch:
         if self._mnt_task is not None:
             self._mnt_task.cancel()
             self._mnt_task = None
-        # stop websocket and close HTTP session
-        await self.free_games.stop()
+        # stop hub-owned modules, websocket and close HTTP session
+        await self.hub.stop()
         await self.telegram.stop()
         await self.websocket.stop(clear_topics=True)
         if self._http_client is not None:

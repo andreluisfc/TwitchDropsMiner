@@ -581,12 +581,18 @@ class TelegramService:
         if free_games is None:
             await self._answer_callback(callback_id, "Epic module is unavailable.")
             return
+        hub = getattr(self._twitch, "hub", None)
+        if hub is None:
+            await self._answer_callback(callback_id, "Hub is unavailable.")
+            return
 
         if data.startswith(CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX):
-            await self._handle_free_games_account_callback(callback_id, data, free_games)
+            await self._handle_free_games_account_callback(callback_id, data, free_games, hub)
             return
         if data.startswith(CALLBACK_FREE_GAMES_CLEAR_ATTENTION_PREFIX):
-            await self._handle_free_games_clear_attention_callback(callback_id, data, free_games)
+            await self._handle_free_games_clear_attention_callback(
+                callback_id, data, free_games, hub
+            )
             return
 
         if data == CALLBACK_FREE_GAMES_RUN:
@@ -595,7 +601,7 @@ class TelegramService:
                 await self._answer_callback(callback_id, "Epic module is disabled.")
             elif status.get("running"):
                 await self._answer_callback(callback_id, "Epic run is already active.")
-            elif free_games.run_now():
+            elif hub.run_action("free-games-epic", "run").get("success"):
                 await self._answer_callback(callback_id, "Epic run started.")
                 self.queue_status_update(immediate=True)
             else:
@@ -606,7 +612,7 @@ class TelegramService:
             status = free_games.get_status()
             if not status.get("running"):
                 await self._answer_callback(callback_id, "Epic run is not active.")
-            elif free_games.stop_run():
+            elif hub.run_action("free-games-epic", "stop").get("success"):
                 await self._answer_callback(callback_id, "Epic stop requested.")
                 self.queue_status_update(immediate=True)
             else:
@@ -619,14 +625,14 @@ class TelegramService:
                 await self._answer_callback(callback_id, "Epic run is active.")
             elif status.get("updating"):
                 await self._answer_callback(callback_id, "Epic update is already active.")
-            elif free_games.update_runner():
+            elif hub.run_action("free-games-epic", "update").get("success"):
                 await self._answer_callback(callback_id, "Epic module update started.")
                 self.queue_status_update(immediate=True)
             else:
                 await self._answer_callback(callback_id, "Epic module update could not be started.")
 
     async def _handle_free_games_account_callback(
-        self, callback_id: str, data: str, free_games: Any
+        self, callback_id: str, data: str, free_games: Any, hub: Any
     ) -> None:
         try:
             account_index = int(data.removeprefix(CALLBACK_FREE_GAMES_RUN_ACCOUNT_PREFIX))
@@ -651,14 +657,19 @@ class TelegramService:
             await self._answer_callback(callback_id, "Epic account is disabled.")
             return
         account_id = str(account.get("id") or "")
-        if account_id and free_games.run_now(account_id):
+        result = hub.run_action(
+            "free-games-epic",
+            "run_account",
+            {"account_id": account_id},
+        )
+        if account_id and result.get("success"):
             await self._answer_callback(callback_id, f"Epic run started for {account.get('name')}.")
             self.queue_status_update(immediate=True)
         else:
             await self._answer_callback(callback_id, "Epic run could not be started.")
 
     async def _handle_free_games_clear_attention_callback(
-        self, callback_id: str, data: str, free_games: Any
+        self, callback_id: str, data: str, free_games: Any, hub: Any
     ) -> None:
         try:
             account_index = int(data.removeprefix(CALLBACK_FREE_GAMES_CLEAR_ATTENTION_PREFIX))
@@ -674,7 +685,12 @@ class TelegramService:
 
         account = accounts[account_index]
         account_id = str(account.get("id") or "")
-        if account_id and free_games.clear_attention(account_id):
+        result = hub.run_action(
+            "free-games-epic",
+            "clear_attention",
+            {"account_id": account_id},
+        )
+        if account_id and result.get("success"):
             await self._answer_callback(callback_id, f"Epic attention cleared for {account.get('name')}.")
             self.queue_status_update(immediate=True)
         else:

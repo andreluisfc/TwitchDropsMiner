@@ -7,6 +7,8 @@ surface so the web panel and Telegram can treat them consistently.
 
 from __future__ import annotations
 
+import inspect
+import logging
 from collections.abc import Iterable
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Protocol
@@ -17,6 +19,9 @@ from src.version import __version__
 
 if TYPE_CHECKING:
     from src.core.client import Twitch
+
+
+logger = logging.getLogger("TwitchDrops")
 
 
 class HubService:
@@ -38,6 +43,28 @@ class HubService:
         self._modules: dict[str, HubModuleAdapter] = {
             module.module_id: module for module in modules
         }
+
+    async def start(self) -> None:
+        """Start registered module services owned by the hub."""
+        for module in self._modules.values():
+            starter = getattr(module, "start", None)
+            if starter is None:
+                continue
+            logger.info("Starting hub module: %s", module.module_id)
+            result = starter()
+            if inspect.isawaitable(result):
+                await result
+
+    async def stop(self) -> None:
+        """Stop registered module services in reverse startup order."""
+        for module in reversed(list(self._modules.values())):
+            stopper = getattr(module, "stop", None)
+            if stopper is None:
+                continue
+            logger.info("Stopping hub module: %s", module.module_id)
+            result = stopper()
+            if inspect.isawaitable(result):
+                await result
 
     def get_status(self) -> dict[str, Any]:
         return {
@@ -83,6 +110,12 @@ class HubModuleAdapter(Protocol):
 
     module_id: str
 
+    async def start(self) -> None:
+        """Start this module if it owns background work."""
+
+    async def stop(self) -> None:
+        """Stop this module if it owns background work."""
+
     def get_status(self) -> dict[str, Any]:
         """Return the module status in hub catalog format."""
 
@@ -100,6 +133,12 @@ class TwitchDropsModuleAdapter:
 
     def __init__(self, twitch: Twitch) -> None:
         self._twitch = twitch
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        return None
 
     def _run_twitch_action(self, action: str) -> dict[str, Any]:
         if action != "reload":
@@ -180,6 +219,12 @@ class EpicFreeGamesModuleAdapter:
 
     def __init__(self, free_games: Any) -> None:
         self._free_games = free_games
+
+    async def start(self) -> None:
+        await self._free_games.start()
+
+    async def stop(self) -> None:
+        await self._free_games.stop()
 
     def run_update(self) -> dict[str, Any]:
         return self.run_action("update", {})

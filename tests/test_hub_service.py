@@ -1,5 +1,7 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.config import State
 from src.services.hub_service import HubService
@@ -43,6 +45,20 @@ def test_hub_service_can_be_built_from_independent_modules():
         "action": "update_all",
         "results": [{"success": True, "module_id": "stub-tool", "action": "update"}],
     }
+
+
+@pytest.mark.asyncio
+async def test_hub_service_starts_and_stops_module_lifecycle():
+    module = StubHubModule()
+    module.start = AsyncMock()
+    module.stop = AsyncMock()
+    hub = HubService(modules=[module])
+
+    await hub.start()
+    await hub.stop()
+
+    module.start.assert_awaited_once_with()
+    module.stop.assert_awaited_once_with()
 
 
 def test_hub_service_returns_twitch_and_epic_modules():

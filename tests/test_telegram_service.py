@@ -393,6 +393,9 @@ async def test_telegram_callback_runs_epic_module():
         run_now=MagicMock(return_value=True),
         update_runner=MagicMock(),
     )
+    hub = SimpleNamespace(
+        run_action=MagicMock(return_value={"success": True, "module_id": "free-games-epic"})
+    )
     twitch = SimpleNamespace(
         settings=SimpleNamespace(
             telegram_bot_token="123:secret",
@@ -405,6 +408,7 @@ async def test_telegram_callback_runs_epic_module():
         gui=MagicMock(),
         get_active_campaign=MagicMock(return_value=None),
         free_games=free_games,
+        hub=hub,
     )
     service = TelegramService(twitch)
     service._session = SimpleNamespace(closed=False)
@@ -421,7 +425,7 @@ async def test_telegram_callback_runs_epic_module():
         }
     )
 
-    free_games.run_now.assert_called_once_with()
+    hub.run_action.assert_called_once_with("free-games-epic", "run")
     service.queue_status_update.assert_called_once_with(immediate=True)
     service._api.assert_awaited_once_with(
         "answerCallbackQuery",
@@ -517,6 +521,9 @@ async def test_telegram_callback_runs_specific_epic_account():
         run_now=MagicMock(return_value=True),
         update_runner=MagicMock(),
     )
+    hub = SimpleNamespace(
+        run_action=MagicMock(return_value={"success": True, "module_id": "free-games-epic"})
+    )
     twitch = SimpleNamespace(
         settings=SimpleNamespace(
             telegram_bot_token="123:secret",
@@ -529,6 +536,7 @@ async def test_telegram_callback_runs_specific_epic_account():
         gui=MagicMock(),
         get_active_campaign=MagicMock(return_value=None),
         free_games=free_games,
+        hub=hub,
     )
     service = TelegramService(twitch)
     service._session = SimpleNamespace(closed=False)
@@ -545,7 +553,11 @@ async def test_telegram_callback_runs_specific_epic_account():
         }
     )
 
-    free_games.run_now.assert_called_once_with("main")
+    hub.run_action.assert_called_once_with(
+        "free-games-epic",
+        "run_account",
+        {"account_id": "main"},
+    )
     service.queue_status_update.assert_called_once_with(immediate=True)
     service._api.assert_awaited_once_with(
         "answerCallbackQuery",
@@ -568,6 +580,9 @@ async def test_telegram_callback_clears_epic_account_attention():
         clear_attention=MagicMock(return_value=True),
         update_runner=MagicMock(),
     )
+    hub = SimpleNamespace(
+        run_action=MagicMock(return_value={"success": True, "module_id": "free-games-epic"})
+    )
     twitch = SimpleNamespace(
         settings=SimpleNamespace(
             telegram_bot_token="123:secret",
@@ -580,6 +595,7 @@ async def test_telegram_callback_clears_epic_account_attention():
         gui=MagicMock(),
         get_active_campaign=MagicMock(return_value=None),
         free_games=free_games,
+        hub=hub,
     )
     service = TelegramService(twitch)
     service._session = SimpleNamespace(closed=False)
@@ -596,7 +612,11 @@ async def test_telegram_callback_clears_epic_account_attention():
         }
     )
 
-    free_games.clear_attention.assert_called_once_with("main")
+    hub.run_action.assert_called_once_with(
+        "free-games-epic",
+        "clear_attention",
+        {"account_id": "main"},
+    )
     service.queue_status_update.assert_called_once_with(immediate=True)
     service._api.assert_awaited_once_with(
         "answerCallbackQuery",
@@ -613,6 +633,9 @@ async def test_telegram_callback_stops_epic_module():
         stop_run=MagicMock(return_value=True),
         update_runner=MagicMock(),
     )
+    hub = SimpleNamespace(
+        run_action=MagicMock(return_value={"success": True, "module_id": "free-games-epic"})
+    )
     twitch = SimpleNamespace(
         settings=SimpleNamespace(
             telegram_bot_token="123:secret",
@@ -625,6 +648,7 @@ async def test_telegram_callback_stops_epic_module():
         gui=MagicMock(),
         get_active_campaign=MagicMock(return_value=None),
         free_games=free_games,
+        hub=hub,
     )
     service = TelegramService(twitch)
     service._session = SimpleNamespace(closed=False)
@@ -641,7 +665,7 @@ async def test_telegram_callback_stops_epic_module():
         }
     )
 
-    free_games.stop_run.assert_called_once_with()
+    hub.run_action.assert_called_once_with("free-games-epic", "stop")
     service.queue_status_update.assert_called_once_with(immediate=True)
     service._api.assert_awaited_once_with(
         "answerCallbackQuery",
@@ -657,6 +681,9 @@ async def test_telegram_callback_updates_epic_module():
         run_now=MagicMock(),
         update_runner=MagicMock(return_value=True),
     )
+    hub = SimpleNamespace(
+        run_action=MagicMock(return_value={"success": True, "module_id": "free-games-epic"})
+    )
     twitch = SimpleNamespace(
         settings=SimpleNamespace(
             telegram_bot_token="123:secret",
@@ -669,6 +696,7 @@ async def test_telegram_callback_updates_epic_module():
         gui=MagicMock(),
         get_active_campaign=MagicMock(return_value=None),
         free_games=free_games,
+        hub=hub,
     )
     service = TelegramService(twitch)
     service._session = SimpleNamespace(closed=False)
@@ -685,7 +713,7 @@ async def test_telegram_callback_updates_epic_module():
         }
     )
 
-    free_games.update_runner.assert_called_once_with()
+    hub.run_action.assert_called_once_with("free-games-epic", "update")
     service.queue_status_update.assert_called_once_with(immediate=True)
     service._api.assert_awaited_once_with(
         "answerCallbackQuery",
