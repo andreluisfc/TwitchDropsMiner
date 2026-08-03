@@ -7,8 +7,9 @@ surface so the web panel and Telegram can treat them consistently.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from src.config import State
 from src.version import __version__
@@ -21,18 +22,29 @@ if TYPE_CHECKING:
 class HubService:
     """Builds a normalized catalog of modules controlled by the hub."""
 
-    def __init__(self, twitch: Twitch) -> None:
-        self._twitch = twitch
+    def __init__(
+        self,
+        twitch: Twitch | None = None,
+        *,
+        modules: Iterable[HubModuleAdapter] | None = None,
+    ) -> None:
+        if modules is None:
+            if twitch is None:
+                raise ValueError("twitch is required when hub modules are not provided")
+            modules = (
+                TwitchDropsModuleAdapter(twitch),
+                EpicFreeGamesModuleAdapter(twitch.free_games),
+            )
+        self._modules: dict[str, HubModuleAdapter] = {
+            module.module_id: module for module in modules
+        }
 
     def get_status(self) -> dict[str, Any]:
         return {
             "name": "TDM Hub",
             "version": __version__,
             "actions": ["update_all"],
-            "modules": [
-                self._twitch_drops_module(),
-                self._epic_freebies_module(),
-            ],
+            "modules": [module.get_status() for module in self._modules.values()],
         }
 
     def run_hub_action(self, action: str) -> dict[str, Any]:
@@ -43,10 +55,7 @@ class HubService:
                 "detail": f"Unsupported hub action: {action}",
             }
 
-        results = [
-            self._run_twitch_update_action(),
-            self._run_epic_action("update", {}),
-        ]
+        results = [module.run_update() for module in self._modules.values()]
         failed = [result for result in results if not result.get("success")]
         if failed:
             return {
@@ -59,15 +68,38 @@ class HubService:
 
     def run_action(self, module_id: str, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         params = params or {}
-        if module_id == "twitch-drops":
-            return self._run_twitch_action(action)
-        if module_id == "free-games-epic":
-            return self._run_epic_action(action, params)
+        module = self._modules.get(module_id)
+        if module is not None:
+            return module.run_action(action, params)
         return {
             "success": False,
             "status_code": 404,
             "detail": f"Hub module not found: {module_id}",
         }
+
+
+class HubModuleAdapter(Protocol):
+    """Normalizes one tool behind the hub."""
+
+    module_id: str
+
+    def get_status(self) -> dict[str, Any]:
+        """Return the module status in hub catalog format."""
+
+    def run_action(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
+        """Run one module action."""
+
+    def run_update(self) -> dict[str, Any]:
+        """Run the module update action for hub-level update all."""
+
+
+class TwitchDropsModuleAdapter:
+    """Hub adapter for the built-in Twitch drops tool."""
+
+    module_id = "twitch-drops"
+
+    def __init__(self, twitch: Twitch) -> None:
+        self._twitch = twitch
 
     def _run_twitch_action(self, action: str) -> dict[str, Any]:
         if action != "reload":
@@ -79,7 +111,10 @@ class HubService:
         self._twitch.change_state(State.INVENTORY_FETCH)
         return {"success": True, "module_id": "twitch-drops", "action": action}
 
-    def _run_twitch_update_action(self) -> dict[str, Any]:
+    def run_action(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._run_twitch_action(action)
+
+    def run_update(self) -> dict[str, Any]:
         return {
             "success": True,
             "module_id": "twitch-drops",
@@ -88,8 +123,70 @@ class HubService:
             "detail": "Built-in module updates are applied by deploying the app branch.",
         }
 
-    def _run_epic_action(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
-        free_games = self._twitch.free_games
+    def get_status(self) -> dict[str, Any]:
+        login = {}
+        status = str(getattr(self._twitch, "_state", "idle"))
+        gui = getattr(self._twitch, "gui", None)
+        if gui is not None:
+            with suppress(Exception):
+                status = gui.status.get()
+            with suppress(Exception):
+                login = gui.login.get_status()
+
+        watching_channel = self._twitch.watching_channel.get_with_default(None)
+        manual_mode = self._twitch.get_manual_mode_info()
+        return {
+            "id": self.module_id,
+            "name": "Twitch Drops",
+            "kind": "builtin",
+            "enabled": True,
+            "running": watching_channel is not None,
+            "updating": False,
+            "status": status,
+            "upstream": "https://github.com/rangermix/TwitchDropsMiner",
+            "update_strategy": "git-fork",
+            "actions": ["reload"],
+            "metrics": {
+                "channels": len(getattr(self._twitch, "channels", {})),
+                "campaigns": len(getattr(self._twitch, "inventory", [])),
+                "wanted_games": len(getattr(self._twitch, "wanted_games", [])),
+            },
+            "details": {
+                "source": {
+                    "repository": "https://github.com/rangermix/TwitchDropsMiner",
+                    "version": __version__,
+                    "revision": None,
+                    "revision_url": None,
+                    "detected_from": "app",
+                },
+                "update": {
+                    "strategy": "git-fork",
+                    "managed_by": "app_deploy",
+                    "last_started_at": None,
+                    "last_finished_at": None,
+                    "last_success": None,
+                },
+                "login": login,
+                "manual_mode": manual_mode,
+                "watching_channel": getattr(watching_channel, "name", None),
+            },
+        }
+
+
+class EpicFreeGamesModuleAdapter:
+    """Hub adapter for the external Epic freebies runner."""
+
+    module_id = "free-games-epic"
+
+    def __init__(self, free_games: Any) -> None:
+        self._free_games = free_games
+
+    def run_update(self) -> dict[str, Any]:
+        return self.run_action("update", {})
+
+    def run_action(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        params = params or {}
+        free_games = self._free_games
         if action == "stop":
             status = free_games.get_status()
             if not status.get("running"):
@@ -181,57 +278,8 @@ class HubService:
             }
         return {"success": True, "module_id": "free-games-epic", "action": action}
 
-    def _twitch_drops_module(self) -> dict[str, Any]:
-        login = {}
-        status = str(getattr(self._twitch, "_state", "idle"))
-        gui = getattr(self._twitch, "gui", None)
-        if gui is not None:
-            with suppress(Exception):
-                status = gui.status.get()
-            with suppress(Exception):
-                login = gui.login.get_status()
-
-        watching_channel = self._twitch.watching_channel.get_with_default(None)
-        manual_mode = self._twitch.get_manual_mode_info()
-        return {
-            "id": "twitch-drops",
-            "name": "Twitch Drops",
-            "kind": "builtin",
-            "enabled": True,
-            "running": watching_channel is not None,
-            "updating": False,
-            "status": status,
-            "upstream": "https://github.com/rangermix/TwitchDropsMiner",
-            "update_strategy": "git-fork",
-            "actions": ["reload"],
-            "metrics": {
-                "channels": len(getattr(self._twitch, "channels", {})),
-                "campaigns": len(getattr(self._twitch, "inventory", [])),
-                "wanted_games": len(getattr(self._twitch, "wanted_games", [])),
-            },
-            "details": {
-                "source": {
-                    "repository": "https://github.com/rangermix/TwitchDropsMiner",
-                    "version": __version__,
-                    "revision": None,
-                    "revision_url": None,
-                    "detected_from": "app",
-                },
-                "update": {
-                    "strategy": "git-fork",
-                    "managed_by": "app_deploy",
-                    "last_started_at": None,
-                    "last_finished_at": None,
-                    "last_success": None,
-                },
-                "login": login,
-                "manual_mode": manual_mode,
-                "watching_channel": getattr(watching_channel, "name", None),
-            },
-        }
-
-    def _epic_freebies_module(self) -> dict[str, Any]:
-        status = self._twitch.free_games.get_status()
+    def get_status(self) -> dict[str, Any]:
+        status = self._free_games.get_status()
         metadata = status.get("module") or {}
         accounts = status.get("accounts") or []
         automation = status.get("automation") or {}

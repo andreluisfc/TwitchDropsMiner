@@ -5,6 +5,46 @@ from src.config import State
 from src.services.hub_service import HubService
 
 
+class StubHubModule:
+    module_id = "stub-tool"
+
+    def get_status(self):
+        return {
+            "id": self.module_id,
+            "name": "Stub Tool",
+            "enabled": True,
+            "running": False,
+            "updating": False,
+            "status": "Idle",
+            "actions": ["run"],
+            "metrics": {},
+            "details": {},
+        }
+
+    def run_action(self, action, params):
+        return {"success": True, "module_id": self.module_id, "action": action, "params": params}
+
+    def run_update(self):
+        return {"success": True, "module_id": self.module_id, "action": "update"}
+
+
+def test_hub_service_can_be_built_from_independent_modules():
+    hub = HubService(modules=[StubHubModule()])
+
+    assert hub.get_status()["modules"] == [StubHubModule().get_status()]
+    assert hub.run_action("stub-tool", "run", {"fast": True}) == {
+        "success": True,
+        "module_id": "stub-tool",
+        "action": "run",
+        "params": {"fast": True},
+    }
+    assert hub.run_hub_action("update_all") == {
+        "success": True,
+        "action": "update_all",
+        "results": [{"success": True, "module_id": "stub-tool", "action": "update"}],
+    }
+
+
 def test_hub_service_returns_twitch_and_epic_modules():
     watching_channel = SimpleNamespace(name="streamer")
     twitch = SimpleNamespace(
