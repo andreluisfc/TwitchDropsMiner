@@ -54,6 +54,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 const targets = JSON.parse(process.env.TDM_EPIC_CLAIM_TARGETS || '[]');
 const accountId = process.env.TDM_EPIC_ACCOUNT_ID || process.env.EG_EMAIL || 'account';
 const dbPath = '/fgc/data/epic-games.json';
+const URL_CLAIM = 'https://store.epicgames.com/en-US/free-games';
 const URL_LOGIN = 'https://www.epicgames.com/id/login?lang=en-US&noHostRedirect=true';
 const cfg = {
   debug: process.env.DEBUG == '1' || process.env.PWDEBUG == '1',
@@ -112,23 +113,23 @@ async function clickIfVisible(scope, selector, timeout = 1500) {
   }
 }
 
-async function loginIfNeeded(page, targetUrl) {
-  if (!page.url().includes('/id/login') && await page.locator('#email').count().catch(() => 0) === 0) {
+async function ensureSignedIn(page) {
+  await page.goto(URL_CLAIM, { waitUntil: 'domcontentloaded' });
+  if (await page.locator('egs-navigation').getAttribute('isloggedin').catch(() => null) === 'true') {
     return;
   }
-
   if (!cfg.eg_email || !cfg.eg_password) {
     throw new Error('login_required');
   }
 
   log('Signing in with configured Epic account.');
-  if (!page.url().includes('/id/login')) {
-    await page.goto(`${URL_LOGIN}&redirectUrl=${encodeURIComponent(targetUrl)}`, { waitUntil: 'domcontentloaded' });
-  }
+  await page.goto(`${URL_LOGIN}&redirectUrl=${encodeURIComponent(URL_CLAIM)}`, { waitUntil: 'domcontentloaded' });
   await page.locator('#email').fill(cfg.eg_email);
   await clickIfVisible(page, 'button#continue', 5000);
   await page.locator('#password').fill(cfg.eg_password);
-  await clickIfVisible(page, 'button#sign-in', 5000);
+  if (!await clickIfVisible(page, 'button#sign-in', 5000)) {
+    await clickIfVisible(page, 'button[type="submit"]', 5000);
+  }
 
   try {
     await page.waitForURL('**/id/login/mfa**', { timeout: 8000 });
@@ -140,7 +141,12 @@ async function loginIfNeeded(page, targetUrl) {
     if (String(error?.message || error).includes('mfa_required')) throw error;
   }
 
+  await page.waitForURL('**/free-games**', { timeout: cfg.timeout }).catch(() => {});
   await page.waitForLoadState('domcontentloaded').catch(() => {});
+  const signedIn = await page.locator('egs-navigation').getAttribute('isloggedin').catch(() => null);
+  if (signedIn !== 'true') {
+    throw new Error('login_not_confirmed');
+  }
 }
 
 async function displayName(page) {
@@ -159,16 +165,39 @@ async function claimTarget(page, db, user, target) {
     return true;
   }
 
-  const targetUrl = target.checkout_url || target.url;
-  log('Opening checkout:', target.title, targetUrl);
+  const targetUrl = target.url || target.checkout_url;
+  log('Opening store page:', target.title, targetUrl);
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
-  await loginIfNeeded(page, targetUrl);
-  if (!page.url().includes('/purchase') && target.checkout_url) {
-    await page.goto(target.checkout_url, { waitUntil: 'domcontentloaded' });
-  }
-
   await clickIfVisible(page, 'button:has-text("Continue")', 2500);
   await clickIfVisible(page, 'button:has-text("Yes, buy now")', 2500);
+
+  if (!page.url().includes('/purchase')) {
+    const purchaseBtn = page.locator('button[data-testid="purchase-cta-button"]').first();
+    const hasPurchaseButton = await purchaseBtn.waitFor({ timeout: cfg.timeout }).then(() => true).catch(() => false);
+    if (!hasPurchaseButton) {
+      if (target.checkout_url) {
+        log('Product CTA not found, falling back to checkout URL:', target.title);
+        await page.goto(target.checkout_url, { waitUntil: 'domcontentloaded' });
+      } else {
+        const body = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+        fail(db, user, target, 'failed:no-product-cta', body.slice(0, 500));
+        return false;
+      }
+    } else {
+      const btnText = (await purchaseBtn.innerText().catch(() => '')).trim().toLowerCase();
+      if (/in library|owned|na biblioteca|adquirido|biblioteca/i.test(btnText)) {
+        fail(db, user, target, 'existed', 'Already in library.');
+        log('Already in library:', target.title);
+        return true;
+      }
+      if (/requires base game|jogo base/i.test(btnText)) {
+        fail(db, user, target, 'failed:requires-base-game', btnText);
+        return false;
+      }
+      log('Clicking product CTA:', target.title, btnText || '(no text)');
+      await purchaseBtn.click({ delay: 25 });
+    }
+  }
 
   const iframeHandle = await page.waitForSelector('#webPurchaseContainer iframe', { timeout: cfg.timeout }).catch(() => null);
   if (!iframeHandle) {
@@ -260,8 +289,10 @@ const db = readDb();
 let ok = true;
 let user = accountId;
 try {
+  await ensureSignedIn(page);
+  user = await displayName(page);
+  log('Signed in as', user);
   for (const target of targets) {
-    user = await displayName(page);
     const targetOk = await claimTarget(page, db, user, target);
     ok = ok && targetOk;
   }
