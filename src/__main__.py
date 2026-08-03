@@ -92,8 +92,30 @@ if __name__ == "__main__":
 
         logger.info("Starting main client run loop")
         try:
-            await client.run()
-            logger.info("Client run completed normally")
+            while not client.is_exiting():
+                try:
+                    await client.run()
+                    logger.info("Client run completed normally")
+                    break
+                except CaptchaRequired:
+                    logger.error("Captcha required - cannot continue")
+                    exit_status = 1
+                    client.print(_.t["error"]["captcha"])
+                    break
+                except Exception:
+                    logger.exception("Twitch Drops module crashed; keeping hub online")
+                    client.print("Twitch Drops module crashed. Hub remains online and will retry.\n")
+                    client.print(traceback.format_exc())
+                    client.gui.status.update("Twitch Drops error. Retrying soon...")
+                    client.telegram.notify_error("Twitch Drops module crashed; retrying.")
+                    client.telegram.queue_status_update(immediate=True)
+                    await client.stop_twitch_worker()
+                    for _retry_second in range(60):
+                        if client.is_exiting():
+                            break
+                        await asyncio.sleep(1)
+                    if not client.is_exiting():
+                        logger.info("Restarting Twitch Drops module after failure")
         except CaptchaRequired:
             logger.error("Captcha required - cannot continue")
             exit_status = 1

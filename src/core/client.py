@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import OrderedDict, abc, deque
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from time import time
@@ -124,19 +125,10 @@ class Twitch:
 
     async def shutdown(self) -> None:
         start_time = time()
-        self.stop_watching()
-        if self._watching_task is not None:
-            self._watching_task.cancel()
-            self._watching_task = None
-        if self._mnt_task is not None:
-            self._mnt_task.cancel()
-            self._mnt_task = None
-        # stop hub-owned modules, websocket and close HTTP session
+        await self.stop_twitch_worker()
+        # stop hub-owned modules and Telegram
         await self.hub.stop()
         await self.telegram.stop()
-        await self.websocket.stop(clear_topics=True)
-        if self._http_client is not None:
-            await self._http_client.close()
         self._drops.clear()
         self.channels.clear()
         self.inventory.clear()
@@ -146,6 +138,28 @@ class Twitch:
         # wait at least half a second + whatever it takes to complete the closing
         # this allows aiohttp to safely close the session
         await asyncio.sleep(start_time + 0.5 - time())
+
+    async def stop_twitch_worker(self) -> None:
+        """Stop Twitch mining tasks without stopping hub-owned modules."""
+        self.stop_watching()
+        if self._watching_task is not None:
+            self._watching_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._watching_task
+            self._watching_task = None
+        if self._mnt_task is not None:
+            self._mnt_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._mnt_task
+            self._mnt_task = None
+        await self.websocket.stop(clear_topics=True)
+        if self._http_client is not None:
+            await self._http_client.close()
+            self._http_client = None
+            self._gql_client = None
+
+    def is_exiting(self) -> bool:
+        return self._state is State.EXIT
 
     def wait_until_login(self) -> abc.Coroutine[Any, Any, Literal[True]]:
         """Wait until the user is logged in."""
