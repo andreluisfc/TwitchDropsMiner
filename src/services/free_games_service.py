@@ -1059,6 +1059,8 @@ class FreeGamesService:
             account_id, account_state
         ):
             return False
+        if self._runner == "docker":
+            self._clear_browser_profile_locks(account_dir)
 
         logger.info("Running free games claimer for Epic account %s", account.get("name"))
         env = os.environ.copy()
@@ -1560,6 +1562,17 @@ class FreeGamesService:
         if script_path.is_file() and script_path.read_text(encoding="utf8") == FREE_GAMES_DIRECT_SCRIPT:
             return
         script_path.write_text(FREE_GAMES_DIRECT_SCRIPT, encoding="utf8")
+
+    def _clear_browser_profile_locks(self, account_dir: Path) -> None:
+        browser_dir = account_dir / "browser"
+        for name in (
+            ".parentlock",
+            "SingletonCookie",
+            "SingletonLock",
+            "SingletonSocket",
+        ):
+            with suppress(OSError):
+                (browser_dir / name).unlink()
 
     def _use_direct_catalog_runner(self) -> bool:
         return os.getenv("FREE_GAMES_USE_DIRECT_CATALOG", "1").strip() != "0"
