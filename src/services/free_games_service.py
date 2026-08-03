@@ -16,6 +16,7 @@ from collections.abc import Coroutine
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from time import monotonic
 from typing import TYPE_CHECKING, Any
 from urllib.error import URLError
 from urllib.request import Request as UrlRequest
@@ -50,6 +51,7 @@ FREE_GAMES_DOCKER_MEMORY = "512m"
 FREE_GAMES_MIN_AVAILABLE_MEMORY_MB = 480
 FREE_GAMES_EXCLUSIVE_SETTLE_SECONDS = 15
 FREE_GAMES_CATALOG_REFRESH_HOURS = 6
+FREE_GAMES_VNC_READY_CACHE_SECONDS = 15
 EPIC_CATALOG_URL = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
 EPIC_STORE_BASE_URL = "https://store.epicgames.com"
 FREE_GAMES_DIRECT_SCRIPT_NAME = "tdm-epic-direct.js"
@@ -389,6 +391,9 @@ class FreeGamesService:
         self._catalog_refresh_task: asyncio.Task[None] | None = None
         self._stop_task: asyncio.Task[None] | None = None
         self._stop_requested = False
+        self._vnc_ready_cache_target: str | None = None
+        self._vnc_ready_cache_checked_at = 0.0
+        self._vnc_ready_cache_value = False
         self._state = self._load_state()
 
     def _load_state(self) -> dict[str, Any]:
@@ -2100,7 +2105,7 @@ class FreeGamesService:
             and self._state.get("active_interactive")
         )
         target = self.get_vnc_target_url("vnc.html") if running else None
-        active = bool(target and self._is_vnc_ready(target))
+        active = bool(target and self._cached_vnc_ready(target))
         status = {
             "enabled": self._runner == "docker",
             "url": FREE_GAMES_VNC_PROXY_URL if active else None,
@@ -2109,6 +2114,19 @@ class FreeGamesService:
             "running": running,
         }
         return status
+
+    def _cached_vnc_ready(self, target: str) -> bool:
+        now = monotonic()
+        if (
+            target == self._vnc_ready_cache_target
+            and now - self._vnc_ready_cache_checked_at < FREE_GAMES_VNC_READY_CACHE_SECONDS
+        ):
+            return self._vnc_ready_cache_value
+        ready = self._is_vnc_ready(target)
+        self._vnc_ready_cache_target = target
+        self._vnc_ready_cache_checked_at = now
+        self._vnc_ready_cache_value = ready
+        return ready
 
     def _is_vnc_ready(self, target: str) -> bool:
         request = UrlRequest(target, method="GET")

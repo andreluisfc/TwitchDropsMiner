@@ -916,6 +916,33 @@ def test_free_games_vnc_status_waits_until_browser_is_ready(monkeypatch):
     }
 
 
+def test_free_games_vnc_status_caches_ready_probe(monkeypatch):
+    monkeypatch.setenv("HUB_DOCKER_NETWORK", "tdm-hub")
+    settings = SimpleNamespace(
+        free_games_enabled=True,
+        free_games_runner="docker",
+        free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+        free_games_schedule_hours=24,
+        free_games_accounts=[{"id": "main"}],
+    )
+    service = FreeGamesService(make_twitch(settings))
+    service._state["running"] = True
+    service._state["active_account_id"] = "main"
+    service._state["active_interactive"] = True
+    calls = 0
+
+    def fake_ready(target):
+        nonlocal calls
+        calls += 1
+        return True
+
+    monkeypatch.setattr(service, "_is_vnc_ready", fake_ready)
+
+    assert service.get_status()["vnc"]["active"] is True
+    assert service.get_status()["vnc"]["active"] is True
+    assert calls == 1
+
+
 def test_free_games_vnc_ready_uses_light_get_request(monkeypatch):
     settings = SimpleNamespace(
         free_games_enabled=True,
