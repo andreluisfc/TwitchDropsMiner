@@ -270,7 +270,8 @@ class EpicFreeGamesModuleAdapter:
                 "status_code": 400,
                 "detail": "No enabled Epic accounts configured",
             }
-        if not free_games.run_now(account_id):
+        interactive = bool(params.get("interactive", True))
+        if not free_games.run_now(account_id, interactive=interactive):
             return {
                 "success": False,
                 "status_code": 409,

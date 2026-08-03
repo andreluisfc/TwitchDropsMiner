@@ -238,9 +238,30 @@ def test_hub_service_runs_epic_actions():
         "action": "stop",
     }
     free_games.update_runner.assert_called_once_with()
-    free_games.run_now.assert_called_once_with("main")
+    free_games.run_now.assert_called_once_with("main", interactive=True)
     free_games.clear_attention.assert_called_once_with("main")
     free_games.stop_run.assert_called_once_with()
+
+
+def test_hub_service_can_run_epic_account_in_background():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(return_value={"enabled": True}),
+        account_exists=MagicMock(return_value=True),
+        has_enabled_accounts=MagicMock(return_value=True),
+        run_now=MagicMock(return_value=True),
+    )
+    hub = HubService(SimpleNamespace(free_games=free_games))
+
+    assert hub.run_action(
+        "free-games-epic",
+        "run_account",
+        {"account_id": "main", "interactive": False},
+    ) == {
+        "success": True,
+        "module_id": "free-games-epic",
+        "action": "run_account",
+    }
+    free_games.run_now.assert_called_once_with("main", interactive=False)
 
 
 def test_hub_service_runs_update_all_action():

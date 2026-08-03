@@ -70,6 +70,7 @@ class FreeGamesService:
             "running": False,
             "updating": False,
             "active_account_id": None,
+            "active_interactive": False,
             "last_run_started_at": None,
             "last_run_finished_at": None,
             "last_run_success": None,
@@ -119,6 +120,7 @@ class FreeGamesService:
             "running": bool(self._state.get("running")),
             "updating": bool(self._state.get("updating")),
             "active_account_id": self._state.get("active_account_id"),
+            "active_interactive": bool(self._state.get("active_interactive")),
             "last_run_started_at": self._state.get("last_run_started_at"),
             "last_run_finished_at": self._state.get("last_run_finished_at"),
             "last_run_success": self._state.get("last_run_success"),
@@ -133,7 +135,7 @@ class FreeGamesService:
             "accounts": [self._account_status(account) for account in self._accounts],
         }
 
-    def run_now(self, account_id: str | None = None) -> bool:
+    def run_now(self, account_id: str | None = None, *, interactive: bool = True) -> bool:
         if not self._enabled:
             return False
         if not self.has_enabled_accounts(account_id):
@@ -143,7 +145,9 @@ class FreeGamesService:
             return False
         if self._run_task is not None and not self._run_task.done():
             return False
-        self._run_task = self._create_task(self._run_accounts(account_id))
+        self._run_task = self._create_task(
+            self._run_accounts(account_id, interactive=interactive)
+        )
         return self._run_task is not None
 
     def update_runner(self) -> bool:
@@ -220,10 +224,20 @@ class FreeGamesService:
             return False
         if not self._scheduled_accounts():
             return False
-        self._run_task = self._create_task(self._run_accounts(scheduled=True))
+        self._run_task = self._create_task(
+            self._run_accounts(scheduled=True, interactive=False)
+        )
         return self._run_task is not None
 
-    async def _run_accounts(self, account_id: str | None = None, *, scheduled: bool = False) -> None:
+    async def _run_accounts(
+        self,
+        account_id: str | None = None,
+        *,
+        scheduled: bool = False,
+        interactive: bool | None = None,
+    ) -> None:
+        if interactive is None:
+            interactive = not scheduled
         accounts = self._enabled_accounts(account_id)
         if scheduled and account_id is None:
             accounts = self._scheduled_accounts()
@@ -238,6 +252,7 @@ class FreeGamesService:
             {
                 "running": True,
                 "active_account_id": None,
+                "active_interactive": interactive,
                 "last_run_started_at": self._now(),
                 "last_run_finished_at": None,
                 "last_run_success": None,
@@ -254,7 +269,7 @@ class FreeGamesService:
             for account in accounts:
                 self._state["active_account_id"] = account["id"]
                 self._save_state()
-                account_success = await self._run_account(account)
+                account_success = await self._run_account(account, interactive=interactive)
                 success = success and account_success
                 if not account_success:
                     failed_accounts.append(str(account.get("name") or account["id"]))
@@ -275,6 +290,7 @@ class FreeGamesService:
                 {
                     "running": False,
                     "active_account_id": None,
+                    "active_interactive": False,
                     "last_run_finished_at": self._now(),
                     "last_run_success": success,
                 }
@@ -344,7 +360,7 @@ class FreeGamesService:
             shown_accounts = f"{shown_accounts}, +{remaining} more"
         return f"Failed Epic accounts: {shown_accounts}"
 
-    async def _run_account(self, account: dict[str, Any]) -> bool:
+    async def _run_account(self, account: dict[str, Any], *, interactive: bool = True) -> bool:
         account_id = str(account["id"])
         started_at = self._now()
         account_state = self._state.setdefault("accounts", {}).setdefault(account_id, {})
@@ -361,7 +377,7 @@ class FreeGamesService:
         account_dir.mkdir(parents=True, exist_ok=True)
         log_path = account_dir / "last-run.log"
 
-        command = self._build_command(account, account_dir)
+        command = self._build_command(account, account_dir, interactive=interactive)
         if command is None:
             account_state.update(
                 {
@@ -421,9 +437,15 @@ class FreeGamesService:
         self._save_state()
         return success
 
-    def _build_command(self, account: dict[str, Any], account_dir: Path) -> list[str] | None:
+    def _build_command(
+        self,
+        account: dict[str, Any],
+        account_dir: Path,
+        *,
+        interactive: bool = True,
+    ) -> list[str] | None:
         if self._runner == "docker":
-            return self._docker_command(account, account_dir)
+            return self._docker_command(account, account_dir, interactive=interactive)
         if self._runner == "local":
             repo_dir = str(self._twitch.settings.free_games_claimer_path or "").strip()
             if not repo_dir:
@@ -431,7 +453,13 @@ class FreeGamesService:
             return ["node", str(Path(repo_dir) / "epic-games.js")]
         return None
 
-    def _docker_command(self, account: dict[str, Any], account_dir: Path) -> list[str]:
+    def _docker_command(
+        self,
+        account: dict[str, Any],
+        account_dir: Path,
+        *,
+        interactive: bool = True,
+    ) -> list[str]:
         account_id = str(account["id"])
         host_account_dir = self._host_account_dir(account_id, account_dir)
         container_name = self._docker_container_name(account_id)
@@ -454,7 +482,7 @@ class FreeGamesService:
             "-e",
             "SCREENSHOTS_DIR=/fgc/data/screenshots",
             "-e",
-            "SHOW=1",
+            f"SHOW={1 if interactive else 0}",
         ]
         if self._docker_network:
             command.extend(["--network", self._docker_network])
@@ -1004,6 +1032,7 @@ class FreeGamesService:
         self._state["running"] = False
         self._state["updating"] = False
         self._state["active_account_id"] = None
+        self._state["active_interactive"] = False
         self._save_state()
 
     async def _docker_container_running(self, account_id: str) -> bool:
@@ -1087,6 +1116,7 @@ class FreeGamesService:
                 {
                     "running": False,
                     "active_account_id": None,
+                    "active_interactive": False,
                     "last_run_finished_at": self._now(),
                     "last_run_success": success,
                     "last_error": None
@@ -1111,6 +1141,7 @@ class FreeGamesService:
                 {
                     "running": False,
                     "active_account_id": None,
+                    "active_interactive": False,
                     "last_run_finished_at": self._now(),
                     "last_run_success": False,
                     "last_error": str(exc),
@@ -1144,7 +1175,11 @@ class FreeGamesService:
         return f"fgc-epic-{self._safe_id(account_id)}"
 
     def _vnc_status(self) -> dict[str, Any]:
-        active = bool(self._state.get("running") and self._state.get("active_account_id"))
+        active = bool(
+            self._state.get("running")
+            and self._state.get("active_account_id")
+            and self._state.get("active_interactive")
+        )
         status = {
             "enabled": self._runner == "docker",
             "url": FREE_GAMES_VNC_PROXY_PATH if active else None,

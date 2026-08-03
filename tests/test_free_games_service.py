@@ -466,6 +466,7 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
         temp_path = Path(temp_dir)
         command = service._docker_command(account, temp_path)
+        background_command = service._docker_command(account, temp_path, interactive=False)
         env = service._account_env(account, temp_path)
 
     assert "secret-password" not in command
@@ -489,6 +490,8 @@ def test_free_games_docker_command_uses_account_env_without_secret_args(monkeypa
     assert "TIMEOUT" in command
     assert "WIDTH" in command
     assert "HEIGHT" in command
+    assert "SHOW=1" in command
+    assert "SHOW=0" in background_command
     assert "/opt/tdm/data/free-games/accounts/main:/fgc/data" in command
     assert "127.0.0.1:6080:6080" in command
 
@@ -525,6 +528,7 @@ def test_free_games_vnc_target_uses_active_account_and_hub_network(monkeypatch):
     service = FreeGamesService(make_twitch(settings))
     service._state["running"] = True
     service._state["active_account_id"] = "main"
+    service._state["active_interactive"] = True
 
     assert service.get_status()["vnc"] == {
         "enabled": True,
@@ -540,6 +544,14 @@ def test_free_games_vnc_target_uses_active_account_and_hub_network(monkeypatch):
         service.get_vnc_target_url("websockify", "token=abc", websocket=True)
         == "ws://fgc-epic-main:6080/websockify?token=abc"
     )
+
+    service._state["active_interactive"] = False
+    assert service.get_status()["vnc"] == {
+        "enabled": True,
+        "url": None,
+        "bind": "tdm-hub",
+        "active": False,
+    }
 
 
 def test_free_games_run_now_requires_enabled_account(monkeypatch):
@@ -675,7 +687,9 @@ async def test_free_games_scheduled_run_skips_accounts_requiring_attention(monke
         await service._run_accounts(scheduled=True)
         automation = service.get_status()["automation"]
 
-    service._run_account.assert_awaited_once_with({"id": "ready", "enabled": True})
+    service._run_account.assert_awaited_once_with(
+        {"id": "ready", "enabled": True}, interactive=False
+    )
     assert service._state["last_run_success"] is True
     assert automation["scheduled_accounts"] == 1
 
@@ -702,7 +716,9 @@ async def test_free_games_run_accounts_marks_global_failure_when_account_fails(m
     assert service._state["last_run_success"] is False
     assert service._state["last_error"] == "Failed Epic accounts: main"
     assert service._state["last_run_finished_at"] is not None
-    service._run_account.assert_awaited_once_with({"id": "main", "enabled": True})
+    service._run_account.assert_awaited_once_with(
+        {"id": "main", "enabled": True}, interactive=True
+    )
     assert twitch.telegram.queue_status_update.call_count == 2
 
 
