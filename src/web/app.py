@@ -360,12 +360,14 @@ async def proxy_free_games_vnc(path: str, request: Request):
     if not target:
         raise HTTPException(status_code=404, detail="Epic browser is not active")
 
-    body = await request.body()
+    body = None
+    if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+        body = await request.body()
     status, content, response_headers, media_type = await asyncio.to_thread(
         _fetch_vnc_http,
         request.method,
         target,
-        body if body else None,
+        body,
     )
     if location := response_headers.get("location"):
         response_headers["location"] = _rewrite_vnc_location(location)
