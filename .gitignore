@@ -6,6 +6,7 @@ __pycache__
 /dist
 /*.exe
 /*.zip
+/*.tar
 /*.tmp
 /Twitch Drops Miner
 # Dev files
