@@ -1427,6 +1427,9 @@ class FreeGamesService:
 
     def _attention_info(self) -> dict[str, Any]:
         info = self._empty_attention_info()
+        active_account_id = str(self._state.get("active_account_id") or "")
+        if active_account_id and (active_attention := self._active_interactive_attention(active_account_id)):
+            return active_attention
         log_path = self._latest_run_log_path()
         if log_path is None:
             return info
@@ -1439,6 +1442,8 @@ class FreeGamesService:
         return attention or info
 
     def _account_attention_info(self, account_id: str) -> dict[str, Any]:
+        if active_attention := self._active_interactive_attention(account_id):
+            return active_attention
         log_path = self._account_run_log_path(account_id)
         if log_path is None:
             return self._empty_attention_info(account_id)
@@ -1455,6 +1460,23 @@ class FreeGamesService:
             "message": None,
             "account_id": account_id,
         }
+
+    def _active_interactive_attention(self, account_id: str) -> dict[str, Any]:
+        if (
+            self._state.get("running")
+            and self._state.get("active_interactive")
+            and str(self._state.get("active_account_id") or "") == account_id
+        ):
+            return {
+                "required": True,
+                "reason": "manual_epic_browser",
+                "message": (
+                    "Epic browser is open for this account. "
+                    "Use Browser to finish login, captcha, or MFA if Epic asks."
+                ),
+                "account_id": account_id,
+            }
+        return {}
 
     def _account_automation_info(
         self, account: dict[str, Any], attention: dict[str, Any]

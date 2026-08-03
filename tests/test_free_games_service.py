@@ -535,6 +535,47 @@ def test_free_games_status_marks_automation_paused_when_all_accounts_need_attent
     assert not due
 
 
+def test_free_games_status_marks_active_interactive_run_as_manual_attention(monkeypatch):
+    monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:dev",
+                free_games_schedule_hours=24,
+                free_games_accounts=[{"id": "main@example.com"}],
+            )
+        )
+    )
+    service._state.update(
+        {
+            "running": True,
+            "active_account_id": "main@example.com",
+            "active_interactive": True,
+        }
+    )
+    monkeypatch.setattr(service, "_is_vnc_ready", lambda target: True)
+
+    status = service.get_status()
+
+    assert status["attention"] == {
+        "required": True,
+        "reason": "manual_epic_browser",
+        "message": (
+            "Epic browser is open for this account. "
+            "Use Browser to finish login, captcha, or MFA if Epic asks."
+        ),
+        "account_id": "main@example.com",
+    }
+    assert status["accounts"][0]["attention"]["reason"] == "manual_epic_browser"
+    assert status["automation"] == {
+        "scheduled_accounts": 0,
+        "paused": True,
+        "pause_reason": "attention_required",
+    }
+
+
 def test_free_games_clear_attention_resumes_scheduling_without_deleting_log(monkeypatch):
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
         data_dir = Path(temp_dir)
