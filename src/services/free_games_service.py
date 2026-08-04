@@ -605,6 +605,8 @@ class FreeGamesService:
         return self._update_task is not None
 
     def refresh_catalog(self) -> bool:
+        if self._state.get("running"):
+            return False
         if self._catalog_refresh_task is not None and not self._catalog_refresh_task.done():
             return False
         self._catalog_refresh_task = self._create_task(self._refresh_catalog())
@@ -925,6 +927,8 @@ class FreeGamesService:
         return status
 
     def _catalog_refresh_due(self) -> bool:
+        if self._state.get("running"):
+            return False
         catalog = self._catalog_status()
         if catalog.get("refreshing"):
             return False

@@ -1245,6 +1245,30 @@ def test_free_games_scheduler_waits_during_startup_grace_window():
     assert service._due_for_scheduled_run()
 
 
+def test_free_games_catalog_refresh_waits_while_runner_is_active():
+    service = FreeGamesService(
+        make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_accounts=[{"id": "main"}],
+            )
+        )
+    )
+    service._state["catalog"]["last_refresh_finished_at"] = None
+
+    assert service._catalog_refresh_due()
+
+    service._state["running"] = True
+    service._create_task = MagicMock()
+
+    assert not service._catalog_refresh_due()
+    assert not service.refresh_catalog()
+    service._create_task.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_free_games_scheduled_run_skips_accounts_requiring_attention(monkeypatch):
     monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
