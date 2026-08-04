@@ -129,17 +129,41 @@ async function signedIn(page) {
   return value === 'true';
 }
 
+async function manualLoginUiActive(page) {
+  return Boolean(
+    await page.locator(
+      [
+        'input[name="code-input-0"]',
+        'input[autocomplete="one-time-code"]',
+        '.h_captcha_challenge iframe',
+        'iframe[src*="hcaptcha.com"]',
+        '#email',
+        '#password',
+        '#form-error-message',
+      ].join(', ')
+    ).count().catch(() => 0)
+  );
+}
+
 async function waitForManualLogin(page, reason) {
   log('Manual Epic login required:', reason);
   log('Keep this run active and open the Epic browser from the hub panel.');
   const deadline = Date.now() + cfg.login_timeout;
+  let lastStoreProbe = 0;
   while (Date.now() < deadline) {
     if (await signedIn(page)) {
       log('Manual Epic login completed.');
       return;
     }
-    if (!page.url().includes('store.epicgames.com') && !page.url().includes('epicgames.com/id/login')) {
+    const currentUrl = page.url();
+    const loginUiActive = await manualLoginUiActive(page);
+    const shouldProbeStore = !loginUiActive && Date.now() - lastStoreProbe > 30000;
+    if (!currentUrl.includes('store.epicgames.com') && !currentUrl.includes('epicgames.com/id/login')) {
       await page.goto(URL_CLAIM, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      lastStoreProbe = Date.now();
+    } else if (currentUrl.includes('epicgames.com/id/login') && shouldProbeStore) {
+      await page.goto(URL_CLAIM, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      lastStoreProbe = Date.now();
     }
     await sleep(5000);
   }
