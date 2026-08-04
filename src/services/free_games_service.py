@@ -499,6 +499,7 @@ class FreeGamesService:
             "running": bool(self._state.get("running")),
             "updating": bool(self._state.get("updating")),
             "active_run": self._active_run_info(),
+            "exclusive": self._exclusive_status(),
             "active_account_id": self._state.get("active_account_id"),
             "active_interactive": bool(self._state.get("active_interactive")),
             "last_run_started_at": self._state.get("last_run_started_at"),
@@ -1902,6 +1903,13 @@ class FreeGamesService:
         info["expires_at"] = expires_at.isoformat(timespec="seconds")
         info["remaining_seconds"] = max(0, remaining)
         return info
+
+    def _exclusive_status(self) -> dict[str, Any]:
+        paused = bool(getattr(self._twitch, "is_twitch_worker_paused", lambda: False)())
+        return {
+            "twitch_paused": bool(self._state.get("running") and paused),
+            "reason": "Epic Freebies exclusive run" if self._state.get("running") and paused else None,
+        }
 
     @property
     def _accounts(self) -> list[dict[str, Any]]:

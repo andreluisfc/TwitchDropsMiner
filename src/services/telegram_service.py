@@ -441,6 +441,8 @@ class TelegramService:
                     f"{self._html(self._format_duration(active_run['remaining_seconds']))} left"
                     f" · until {self._html(self._format_datetime(active_run['expires_at']))}"
                 )
+            if (status.get("exclusive") or {}).get("twitch_paused"):
+                lines.append("🧘 Twitch Drops paused while Epic is active.")
         elif (status.get("automation") or {}).get("paused"):
             lines.append("⏸ Automatic Epic runs paused until manual attention is resolved.")
         elif status.get("next_run_at"):

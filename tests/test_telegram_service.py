@@ -268,6 +268,7 @@ def test_telegram_free_games_lines_include_active_run_window():
                     "expires_at": "2026-08-03T23:41:11-03:00",
                     "remaining_seconds": 5400,
                 },
+                "exclusive": {"twitch_paused": True},
                 "automation": {"paused": False},
                 "attention": {"required": False},
                 "catalog": {"current": [], "upcoming": []},
@@ -300,6 +301,7 @@ def test_telegram_free_games_lines_include_active_run_window():
 
     assert "🔄 Running now: main" in lines
     assert "⏳ Window: 1h 30m left · until 03/08 23:41" in lines
+    assert "🧘 Twitch Drops paused while Epic is active." in lines
 
 
 def test_telegram_free_games_lines_include_pending_claims():

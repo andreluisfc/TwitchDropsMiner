@@ -600,17 +600,17 @@ def test_free_games_status_marks_automation_paused_when_all_accounts_need_attent
 
 def test_free_games_status_marks_active_interactive_run_as_manual_attention(monkeypatch):
     monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
-    service = FreeGamesService(
-        make_twitch(
-            SimpleNamespace(
-                free_games_enabled=True,
-                free_games_runner="docker",
-                free_games_image="ghcr.io/vogler/free-games-claimer:dev",
-                free_games_schedule_hours=24,
-                free_games_accounts=[{"id": "main@example.com"}],
-            )
+    twitch = make_twitch(
+        SimpleNamespace(
+            free_games_enabled=True,
+            free_games_runner="docker",
+            free_games_image="ghcr.io/vogler/free-games-claimer:dev",
+            free_games_schedule_hours=24,
+            free_games_accounts=[{"id": "main@example.com"}],
         )
     )
+    twitch.is_twitch_worker_paused = MagicMock(return_value=True)
+    service = FreeGamesService(twitch)
     service._state.update(
         {
             "running": True,
@@ -640,6 +640,10 @@ def test_free_games_status_marks_active_interactive_run_as_manual_attention(monk
     assert status["active_run"]["timeout_minutes"] == 120
     assert status["active_run"]["expires_at"] is not None
     assert 0 < status["active_run"]["remaining_seconds"] <= 120 * 60
+    assert status["exclusive"] == {
+        "twitch_paused": True,
+        "reason": "Epic Freebies exclusive run",
+    }
     assert status["automation"] == {
         "scheduled_accounts": 0,
         "paused": True,

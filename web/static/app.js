@@ -2571,6 +2571,9 @@ function updateFreeGamesStatus(status) {
                 `${label}: ${formatCompactDuration(status.active_run.remaining_seconds)} left · ${formatLocalDateTime(status.active_run.expires_at)}`
             ));
         }
+        if (status.exclusive?.twitch_paused) {
+            el.appendChild(makeElement('span', {}, 'Twitch paused while Epic is active'));
+        }
         if (status.automation?.paused) {
             el.appendChild(makeElement('span', { class: 'error-text' }, 'Automatic runs paused until manual attention is resolved.'));
         }
