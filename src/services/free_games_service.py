@@ -1127,12 +1127,18 @@ class FreeGamesService:
             stderr=asyncio.subprocess.STDOUT,
         )
         timed_out = False
+        timeout_docker_logs = ""
         try:
             output, _ = await asyncio.wait_for(
                 process.communicate(), timeout=self._run_timeout_seconds(interactive=interactive)
             )
         except TimeoutError:
             timed_out = True
+            if self._runner == "docker":
+                docker_logs = await self._docker_output(
+                    "docker", "logs", self._docker_container_name(account_id)
+                )
+                timeout_docker_logs = docker_logs[1][-12000:] if docker_logs[1] else ""
             await self._stop_timed_out_process(process, account_id)
             try:
                 output, _ = await asyncio.wait_for(process.communicate(), timeout=30)
@@ -1140,6 +1146,8 @@ class FreeGamesService:
                 output = b""
                 logger.warning("Timed out while stopping Epic runner process")
         text = output.decode(errors="replace")[-12000:]
+        if timed_out and timeout_docker_logs:
+            text = timeout_docker_logs
         if self._runner == "docker" and not timed_out:
             docker_logs = await self._docker_output(
                 "docker", "logs", self._docker_container_name(account_id)
@@ -2078,6 +2086,7 @@ class FreeGamesService:
         account_state = self._state.setdefault("accounts", {}).setdefault(account_id, {})
         returncode_text = ""
         timed_out = False
+        timeout_docker_logs = ""
         try:
             try:
                 wait = await asyncio.wait_for(
@@ -2086,14 +2095,19 @@ class FreeGamesService:
                 )
             except TimeoutError:
                 timed_out = True
+                logs = await self._docker_output("docker", "logs", container_name)
+                timeout_docker_logs = logs[1][-12000:] if logs[1] else ""
                 await self._docker_output("docker", "rm", "-f", container_name)
                 wait = (0, "")
             returncode_text = wait[1].strip()
-            logs = await self._docker_output("docker", "logs", container_name)
-            if logs[1]:
+            logs_text = timeout_docker_logs
+            if not logs_text:
+                logs = await self._docker_output("docker", "logs", container_name)
+                logs_text = logs[1][-12000:] if logs[1] else ""
+            if logs_text:
                 log_path = self._account_data_dir(account_id) / "last-run.log"
                 log_path.parent.mkdir(parents=True, exist_ok=True)
-                log_path.write_text(logs[1][-12000:], encoding="utf8")
+                log_path.write_text(logs_text, encoding="utf8")
             success = not timed_out and wait[0] == 0 and returncode_text == "0"
             account_state.update(
                 {

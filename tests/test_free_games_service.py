@@ -1367,19 +1367,33 @@ async def test_free_games_run_account_times_out_and_stops_container(monkeypatch)
     )
     service._run_timeout_seconds = lambda **_: 0.01
     service._prepare_docker_container = AsyncMock(return_value=True)
+    calls = []
 
     async def fake_docker_output(*command):
-        assert command == ("docker", "rm", "-f", "fgc-epic-main")
-        process.returncode = 137
-        return 0, "removed"
+        calls.append(command)
+        if command == ("docker", "logs", "fgc-epic-main"):
+            return 0, "manual login still pending"
+        if command == ("docker", "rm", "-f", "fgc-epic-main"):
+            process.returncode = 137
+            return 0, "removed"
+        return 1, "unexpected command"
 
     service._docker_output = fake_docker_output
 
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
-        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", Path(temp_dir))
+        data_dir = Path(temp_dir)
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
         success = await service._run_account({"id": "main"})
+        last_run_log = (data_dir / "accounts" / "main" / "last-run.log").read_text(
+            encoding="utf8"
+        )
 
     assert not success
+    assert calls == [
+        ("docker", "logs", "fgc-epic-main"),
+        ("docker", "rm", "-f", "fgc-epic-main"),
+    ]
+    assert last_run_log == "manual login still pending"
     account_state = service._state["accounts"]["main"]
     assert account_state["last_run_success"] is False
     assert account_state["last_error"] == "Timed out after 1 minute(s)."
@@ -1589,42 +1603,54 @@ async def test_free_games_monitor_adopted_container_updates_state(monkeypatch):
 @pytest.mark.asyncio
 async def test_free_games_monitor_adopted_container_times_out(monkeypatch):
     monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
-    twitch = make_twitch(
-        SimpleNamespace(
-            free_games_enabled=True,
-            free_games_runner="docker",
-            free_games_image="ghcr.io/vogler/free-games-claimer:latest",
-            free_games_schedule_hours=24,
-            free_games_run_timeout_minutes=1,
-            free_games_accounts=[],
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        data_dir = Path(temp_dir)
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", data_dir)
+        twitch = make_twitch(
+            SimpleNamespace(
+                free_games_enabled=True,
+                free_games_runner="docker",
+                free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                free_games_schedule_hours=24,
+                free_games_run_timeout_minutes=1,
+                free_games_accounts=[],
+            )
         )
-    )
-    service = FreeGamesService(twitch)
-    service._state.update(
-        {
-            "running": True,
-            "active_account_id": "main",
-            "accounts": {"main": {}},
-        }
-    )
-    service._remaining_run_timeout_seconds = lambda: 0.01
-    calls = []
+        service = FreeGamesService(twitch)
+        service._state.update(
+            {
+                "running": True,
+                "active_account_id": "main",
+                "accounts": {"main": {}},
+            }
+        )
+        service._remaining_run_timeout_seconds = lambda: 0.01
+        calls = []
 
-    async def fake_docker_output(*command):
-        calls.append(command)
-        if command[:2] == ("docker", "wait"):
-            await asyncio.sleep(3600)
-        return 0, ""
+        async def fake_docker_output(*command):
+            calls.append(command)
+            if command[:2] == ("docker", "wait"):
+                await asyncio.sleep(3600)
+            if command[:2] == ("docker", "logs"):
+                return 0, "manual timeout log"
+            return 0, ""
 
-    service._docker_output = fake_docker_output
+        service._docker_output = fake_docker_output
 
-    await service._monitor_adopted_docker_container("main")
+        await service._monitor_adopted_docker_container("main")
+        last_run_log = (data_dir / "accounts" / "main" / "last-run.log").read_text(
+            encoding="utf8"
+        )
 
     assert ("docker", "rm", "-f", "fgc-epic-main") in calls
+    assert calls.index(("docker", "logs", "fgc-epic-main")) < calls.index(
+        ("docker", "rm", "-f", "fgc-epic-main")
+    )
     assert service._state["running"] is False
     assert service._state["last_run_success"] is False
     assert service._state["last_error"] == "Timed out after 1 minute(s)."
     assert service._state["accounts"]["main"]["last_error"] == "Timed out after 1 minute(s)."
+    assert last_run_log == "manual timeout log"
     twitch.telegram.queue_status_update.assert_called_once()
 
 
