@@ -104,6 +104,68 @@ def test_free_games_service_reads_upstream_epic_games_database(monkeypatch):
     assert status["accounts"][0]["known_games_count"] == 2
 
 
+def test_free_games_status_hides_failed_claims_that_are_pending_again(monkeypatch):
+    with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+        temp_path = Path(temp_dir)
+        monkeypatch.setattr("src.services.free_games_service.FREE_GAMES_DATA_DIR", temp_path)
+        account_dir = temp_path / "accounts" / "main"
+        account_dir.mkdir(parents=True)
+        (account_dir / "epic-games.json").write_text(
+            json.dumps(
+                {
+                    "EpicUser": {
+                        "offer-a": {
+                            "title": "Retry Me",
+                            "url": "https://example.com/retry",
+                            "time": "2026-08-03 12:00:00.000",
+                            "status": "failed:no-checkout",
+                        },
+                        "offer-b": {
+                            "title": "Real Failure",
+                            "url": "https://example.com/failed",
+                            "time": "2026-08-03 12:05:00.000",
+                            "status": "failed:no-checkout",
+                        },
+                    }
+                }
+            ),
+            encoding="utf8",
+        )
+        service = FreeGamesService(
+            make_twitch(
+                SimpleNamespace(
+                    free_games_enabled=True,
+                    free_games_runner="docker",
+                    free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+                    free_games_schedule_hours=24,
+                    free_games_accounts=[{"id": "main", "name": "Main"}],
+                )
+            )
+        )
+        monkeypatch.setattr(
+            service,
+            "_catalog_claim_targets",
+            lambda account_id: [
+                {
+                    "id": "offer-a",
+                    "title": "Retry Me",
+                    "url": "https://example.com/retry",
+                    "checkout_url": "https://example.com/checkout",
+                }
+            ],
+        )
+
+        status = service.get_status()
+
+    assert [game["title"] for game in status["accounts"][0]["pending_claim_games"]] == [
+        "Retry Me"
+    ]
+    assert [game["title"] for game in status["accounts"][0]["failed_games"]] == [
+        "Real Failure"
+    ]
+    assert status["accounts"][0]["known_games_count"] == 2
+
+
 def test_free_games_service_parses_epic_catalog_freebies(monkeypatch):
     monkeypatch.setenv("EPIC_CATALOG_LOCALE", "pt-BR")
     monkeypatch.setenv("EPIC_CATALOG_COUNTRY", "BR")

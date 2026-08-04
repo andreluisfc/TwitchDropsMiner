@@ -1329,8 +1329,8 @@ class FreeGamesService:
     def _account_status(self, account: dict[str, Any]) -> dict[str, Any]:
         account_id = str(account.get("id"))
         account_state = self._state.get("accounts", {}).get(account_id, {})
-        claims = self._read_epic_claims(account_id)
         claim_targets = self._catalog_claim_targets(account_id)
+        claims = self._read_epic_claims(account_id, pending_claims=claim_targets)
         attention = self._account_attention_info(account_id)
         automation = self._account_automation_info(account, attention)
         return {
@@ -1757,11 +1757,14 @@ class FreeGamesService:
         account_dir = self._account_data_dir(account_id)
         return [account_dir / "epic-games.json", account_dir / "db.json"]
 
-    def _read_epic_claims(self, account_id: str, limit: int = 8) -> dict[str, Any]:
+    def _read_epic_claims(
+        self, account_id: str, limit: int = 8, pending_claims: list[dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
         data = self._read_epic_claim_db(account_id)
         claimed: list[dict[str, Any]] = []
         failed: list[dict[str, Any]] = []
         known_count = 0
+        pending_keys = self._claim_identity_keys(pending_claims or [])
 
         if not isinstance(data, dict):
             return {"claimed": claimed, "failed": failed, "known_count": known_count}
@@ -1782,7 +1785,9 @@ class FreeGamesService:
                 }
                 if item["status"] in {"claimed", "existed", "manual", "submitted"}:
                     claimed.append(item)
-                elif str(item["status"]).startswith("failed"):
+                elif str(item["status"]).startswith("failed") and not self._claim_matches_keys(
+                    item, pending_keys
+                ):
                     failed.append(item)
 
         claimed.sort(key=lambda item: str(item.get("time") or ""), reverse=True)
@@ -1792,6 +1797,22 @@ class FreeGamesService:
             "failed": failed[:limit],
             "known_count": known_count,
         }
+
+    def _claim_identity_keys(self, claims: list[dict[str, Any]]) -> set[str]:
+        keys: set[str] = set()
+        for claim in claims:
+            for field in ("id", "title"):
+                value = str(claim.get(field) or "").strip().lower()
+                if value:
+                    keys.add(value)
+        return keys
+
+    def _claim_matches_keys(self, claim: dict[str, Any], keys: set[str]) -> bool:
+        for field in ("id", "title"):
+            value = str(claim.get(field) or "").strip().lower()
+            if value and value in keys:
+                return True
+        return False
 
     @property
     def _enabled(self) -> bool:
