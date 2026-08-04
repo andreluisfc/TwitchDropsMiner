@@ -2049,10 +2049,31 @@ class FreeGamesService:
         if not account_id or not await self._docker_container_running(account_id):
             return False
 
-        self._run_task = self._create_task(self._monitor_adopted_docker_container(account_id))
+        resume_twitch = await self._pause_twitch_for_adopted_run()
+        self._run_task = self._create_task(
+            self._monitor_adopted_docker_container(account_id, resume_twitch=resume_twitch)
+        )
+        if self._run_task is None and resume_twitch:
+            self._resume_twitch_after_adopted_run()
         return self._run_task is not None
 
-    async def _monitor_adopted_docker_container(self, account_id: str) -> None:
+    async def _pause_twitch_for_adopted_run(self) -> bool:
+        if not self._state.get("active_interactive"):
+            return False
+        pause = getattr(self._twitch, "pause_twitch_worker", None)
+        if pause is None:
+            return False
+        await pause("Epic Freebies exclusive run")
+        return True
+
+    def _resume_twitch_after_adopted_run(self) -> None:
+        resume = getattr(self._twitch, "resume_twitch_worker", None)
+        if resume is not None:
+            resume()
+
+    async def _monitor_adopted_docker_container(
+        self, account_id: str, *, resume_twitch: bool = False
+    ) -> None:
         container_name = self._docker_container_name(account_id)
         account_state = self._state.setdefault("accounts", {}).setdefault(account_id, {})
         returncode_text = ""
@@ -2123,6 +2144,8 @@ class FreeGamesService:
             self._save_state()
             logger.warning("Adopted Epic runner monitoring failed", exc_info=True)
         finally:
+            if resume_twitch:
+                self._resume_twitch_after_adopted_run()
             self._twitch.telegram.queue_status_update()
             self._stop_requested = False
 

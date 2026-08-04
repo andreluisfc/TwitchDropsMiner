@@ -1499,6 +1499,43 @@ async def test_free_games_adopts_active_docker_container(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_free_games_adopts_active_interactive_container_pauses_twitch(monkeypatch):
+    twitch = make_twitch(
+        SimpleNamespace(
+            free_games_enabled=True,
+            free_games_runner="docker",
+            free_games_image="ghcr.io/vogler/free-games-claimer:latest",
+            free_games_schedule_hours=24,
+            free_games_accounts=[],
+        )
+    )
+    twitch.pause_twitch_worker = AsyncMock()
+    twitch.resume_twitch_worker = MagicMock()
+    service = FreeGamesService(twitch)
+    service._state.update(
+        {
+            "running": True,
+            "active_account_id": "main",
+            "active_interactive": True,
+        }
+    )
+    service._docker_container_running = AsyncMock(return_value=True)
+    captured = {}
+
+    def fake_create_task(coro):
+        captured["coro"] = coro
+        coro.close()
+        return SimpleNamespace(done=lambda: False)
+
+    service._create_task = MagicMock(side_effect=fake_create_task)
+
+    assert await service._adopt_active_docker_run_if_needed()
+    twitch.pause_twitch_worker.assert_awaited_once_with("Epic Freebies exclusive run")
+    assert captured["coro"].cr_code.co_name == "_monitor_adopted_docker_container"
+    twitch.resume_twitch_worker.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_free_games_monitor_adopted_container_updates_state(monkeypatch):
     monkeypatch.setattr("src.services.free_games_service.json_save", MagicMock())
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -1531,7 +1568,9 @@ async def test_free_games_monitor_adopted_container_updates_state(monkeypatch):
 
         service._docker_output = fake_docker_output
 
-        await service._monitor_adopted_docker_container("main")
+        twitch.resume_twitch_worker = MagicMock()
+
+        await service._monitor_adopted_docker_container("main", resume_twitch=True)
 
         assert calls == [
             ("docker", "wait", "fgc-epic-main"),
@@ -1543,6 +1582,7 @@ async def test_free_games_monitor_adopted_container_updates_state(monkeypatch):
         assert (temp_path / "accounts" / "main" / "last-run.log").read_text(
             encoding="utf8"
         ) == "claimed output"
+        twitch.resume_twitch_worker.assert_called_once_with()
         twitch.telegram.queue_status_update.assert_called_once()
 
 
