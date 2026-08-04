@@ -146,6 +146,28 @@ async function waitForManualLogin(page, reason) {
   throw new Error(`${reason}_manual_timeout`);
 }
 
+async function checkoutCaptchaPresent(frame) {
+  return Boolean(
+    await frame.locator('#h_captcha_challenge_checkout_free_prod iframe, iframe[src*="hcaptcha.com"]')
+      .count()
+      .catch(() => 0)
+  );
+}
+
+async function waitForManualCheckoutCaptcha(frame, target) {
+  log('Manual Epic checkout captcha required:', target.title);
+  log('Keep this run active and solve the checkout captcha from the hub panel.');
+  const deadline = Date.now() + cfg.login_timeout;
+  while (Date.now() < deadline) {
+    if (!await checkoutCaptchaPresent(frame)) {
+      log('Manual Epic checkout captcha completed:', target.title);
+      return true;
+    }
+    await sleep(5000);
+  }
+  return false;
+}
+
 async function ensureSignedIn(page) {
   log('Checking Epic login state.');
   await page.goto(URL_CLAIM, { waitUntil: 'domcontentloaded' });
@@ -324,9 +346,13 @@ async function claimTarget(page, db, user, target) {
   await clickIfVisible(frame, 'button:has-text("I Agree")', 8000);
   await sleep(5000);
 
-  if (await frame.locator('#h_captcha_challenge_checkout_free_prod iframe').count().catch(() => 0)) {
-    fail(db, user, target, 'failed:captcha-required');
-    return false;
+  if (await checkoutCaptchaPresent(frame)) {
+    if (cfg.interactive && await waitForManualCheckoutCaptcha(frame, target)) {
+      await sleep(3000);
+    } else {
+      fail(db, user, target, 'failed:captcha-required');
+      return false;
+    }
   }
 
   const confirmation = await frame.locator('body').innerText({ timeout: 5000 }).catch(() => '');

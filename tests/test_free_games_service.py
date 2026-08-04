@@ -891,6 +891,7 @@ def test_free_games_docker_command_uses_direct_catalog_runner_for_pending_claims
         temp_path = Path(temp_dir)
         command = service._docker_command({"id": "main"}, temp_path)
         env = service._account_env({"id": "main"}, temp_path)
+        script = (temp_path / "tdm-epic-direct.js").read_text(encoding="utf8")
 
         assert (temp_path / "tdm-epic-direct.js").is_file()
 
@@ -900,6 +901,9 @@ def test_free_games_docker_command_uses_direct_catalog_runner_for_pending_claims
     targets = json.loads(env["TDM_EPIC_CLAIM_TARGETS"])
     assert targets[0]["id"] == "offer-a"
     assert targets[0]["checkout_url"].endswith("offers=1-namespace-a-offer-a")
+    assert "waitForManualCheckoutCaptcha" in script
+    assert "Manual Epic checkout captcha required" in script
+    assert "cfg.interactive && await waitForManualCheckoutCaptcha" in script
 
 
 def test_free_games_docker_command_can_join_hub_network(monkeypatch):
