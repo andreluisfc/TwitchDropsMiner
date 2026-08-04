@@ -554,6 +554,9 @@ def test_free_games_status_marks_active_interactive_run_as_manual_attention(monk
             "running": True,
             "active_account_id": "main@example.com",
             "active_interactive": True,
+            "last_run_started_at": (datetime.now().astimezone() - timedelta(minutes=5)).isoformat(
+                timespec="seconds"
+            ),
         }
     )
     monkeypatch.setattr(service, "_is_vnc_ready", lambda target: True)
@@ -570,6 +573,11 @@ def test_free_games_status_marks_active_interactive_run_as_manual_attention(monk
         "account_id": "main@example.com",
     }
     assert status["accounts"][0]["attention"]["reason"] == "manual_epic_browser"
+    assert status["active_run"]["account_id"] == "main@example.com"
+    assert status["active_run"]["interactive"] is True
+    assert status["active_run"]["timeout_minutes"] == 120
+    assert status["active_run"]["expires_at"] is not None
+    assert 0 < status["active_run"]["remaining_seconds"] <= 120 * 60
     assert status["automation"] == {
         "scheduled_accounts": 0,
         "paused": True,

@@ -434,6 +434,13 @@ class TelegramService:
         elif status.get("running"):
             active = status.get("active_account_id") or "all accounts"
             lines.append(f"🔄 Running now: {self._html(active)}")
+            active_run = status.get("active_run") or {}
+            if active_run.get("expires_at") and active_run.get("remaining_seconds") is not None:
+                lines.append(
+                    "⏳ Window: "
+                    f"{self._html(self._format_duration(active_run['remaining_seconds']))} left"
+                    f" · until {self._html(self._format_datetime(active_run['expires_at']))}"
+                )
         elif (status.get("automation") or {}).get("paused"):
             lines.append("⏸ Automatic Epic runs paused until manual attention is resolved.")
         elif status.get("next_run_at"):
@@ -523,6 +530,17 @@ class TelegramService:
         except ValueError:
             return str(value)
         return self._local_datetime(stamp).strftime("%d/%m %H:%M")
+
+    def _format_duration(self, value: object) -> str:
+        try:
+            seconds = max(0, int(value))
+        except (TypeError, ValueError):
+            return str(value)
+        hours, remainder = divmod(seconds, 3600)
+        minutes = remainder // 60
+        if hours:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
 
     def _save_status_state(self, message_id: int | None) -> None:
         self._state["status_message_id"] = message_id

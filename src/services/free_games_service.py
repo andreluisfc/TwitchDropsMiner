@@ -498,6 +498,7 @@ class FreeGamesService:
             "manual_run_timeout_minutes": self._manual_run_timeout_minutes,
             "running": bool(self._state.get("running")),
             "updating": bool(self._state.get("updating")),
+            "active_run": self._active_run_info(),
             "active_account_id": self._state.get("active_account_id"),
             "active_interactive": bool(self._state.get("active_interactive")),
             "last_run_started_at": self._state.get("last_run_started_at"),
@@ -1845,6 +1846,33 @@ class FreeGamesService:
             return self._run_timeout_seconds(interactive=interactive)
         elapsed = (datetime.now().astimezone() - started).total_seconds()
         return max(1, int(self._run_timeout_seconds(interactive=interactive) - elapsed))
+
+    def _active_run_info(self) -> dict[str, Any] | None:
+        if not self._state.get("running"):
+            return None
+        interactive = bool(self._state.get("active_interactive"))
+        timeout_seconds = self._run_timeout_seconds(interactive=interactive)
+        timeout_minutes = self._manual_run_timeout_minutes if interactive else self._run_timeout_minutes
+        started_at = self._state.get("last_run_started_at")
+        info: dict[str, Any] = {
+            "account_id": self._state.get("active_account_id"),
+            "interactive": interactive,
+            "timeout_minutes": timeout_minutes,
+            "started_at": started_at,
+            "expires_at": None,
+            "remaining_seconds": None,
+        }
+        if not started_at:
+            return info
+        try:
+            started = datetime.fromisoformat(str(started_at))
+        except ValueError:
+            return info
+        expires_at = started + timedelta(seconds=timeout_seconds)
+        remaining = int((expires_at - datetime.now().astimezone()).total_seconds())
+        info["expires_at"] = expires_at.isoformat(timespec="seconds")
+        info["remaining_seconds"] = max(0, remaining)
+        return info
 
     @property
     def _accounts(self) -> list[dict[str, Any]]:

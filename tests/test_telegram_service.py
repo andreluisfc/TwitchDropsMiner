@@ -257,6 +257,51 @@ def test_telegram_free_games_lines_include_attention_message():
     assert "  • ⏸ Automation blocked: attention required" in lines
 
 
+def test_telegram_free_games_lines_include_active_run_window():
+    free_games = SimpleNamespace(
+        get_status=MagicMock(
+            return_value={
+                "enabled": True,
+                "running": True,
+                "active_account_id": "main",
+                "active_run": {
+                    "expires_at": "2026-08-03T23:41:11-03:00",
+                    "remaining_seconds": 5400,
+                },
+                "automation": {"paused": False},
+                "attention": {"required": False},
+                "catalog": {"current": [], "upcoming": []},
+                "accounts": [
+                    {
+                        "id": "main",
+                        "name": "Main",
+                        "last_run_success": None,
+                        "attention": {"required": False},
+                    }
+                ],
+            }
+        )
+    )
+    twitch = SimpleNamespace(
+        settings=SimpleNamespace(
+            telegram_bot_token="",
+            telegram_chat_id="",
+            telegram_enabled=False,
+            telegram_panel_url="",
+            telegram_notifications={},
+        ),
+        watching_channel=MagicMock(),
+        gui=MagicMock(),
+        get_active_campaign=MagicMock(return_value=None),
+        free_games=free_games,
+    )
+
+    lines = TelegramService(twitch)._format_free_games_lines()
+
+    assert "🔄 Running now: main" in lines
+    assert "⏳ Window: 1h 30m left · until 03/08 23:41" in lines
+
+
 def test_telegram_free_games_lines_include_pending_claims():
     free_games = SimpleNamespace(
         get_status=MagicMock(

@@ -2563,6 +2563,14 @@ function updateFreeGamesStatus(status) {
         if (status.active_account_id) {
             el.appendChild(makeElement('span', {}, `Account: ${status.active_account_id}`));
         }
+        if (status.active_run?.expires_at && Number.isFinite(status.active_run?.remaining_seconds)) {
+            const label = status.active_run.interactive ? 'Manual browser closes' : 'Run closes';
+            el.appendChild(makeElement(
+                'span',
+                {},
+                `${label}: ${formatCompactDuration(status.active_run.remaining_seconds)} left · ${formatLocalDateTime(status.active_run.expires_at)}`
+            ));
+        }
         if (status.automation?.paused) {
             el.appendChild(makeElement('span', { class: 'error-text' }, 'Automatic runs paused until manual attention is resolved.'));
         }
@@ -3018,6 +3026,14 @@ function formatLocalDateTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleString();
+}
+
+function formatCompactDuration(seconds) {
+    const totalSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
 }
 
 // ==================== DOM Utilities ====================
