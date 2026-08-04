@@ -130,19 +130,21 @@ async function signedIn(page) {
 }
 
 async function manualLoginUiActive(page) {
-  return Boolean(
-    await page.locator(
-      [
-        'input[name="code-input-0"]',
-        'input[autocomplete="one-time-code"]',
-        '.h_captcha_challenge iframe',
-        'iframe[src*="hcaptcha.com"]',
-        '#email',
-        '#password',
-        '#form-error-message',
-      ].join(', ')
-    ).count().catch(() => 0)
-  );
+  const selectors = [
+    'input[name="code-input-0"]',
+    'input[autocomplete="one-time-code"]',
+    '.h_captcha_challenge iframe',
+    'iframe[src*="hcaptcha.com"]',
+    '#email',
+    '#password',
+    '#form-error-message',
+  ];
+  for (const selector of selectors) {
+    if (await page.locator(selector).first().isVisible().catch(() => false)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function waitForManualLogin(page, reason) {

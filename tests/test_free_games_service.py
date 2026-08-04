@@ -905,6 +905,7 @@ def test_free_games_docker_command_uses_direct_catalog_runner_for_pending_claims
     assert "Manual Epic checkout captcha required" in script
     assert "cfg.interactive && await waitForManualCheckoutCaptcha" in script
     assert "manualLoginUiActive" in script
+    assert ".isVisible().catch(() => false)" in script
     assert "lastStoreProbe" in script
     assert "currentUrl.includes('epicgames.com/id/login') && shouldProbeStore" in script
 
