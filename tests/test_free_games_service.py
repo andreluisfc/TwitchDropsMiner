@@ -1045,15 +1045,27 @@ def test_free_games_vnc_ready_uses_light_get_request(monkeypatch):
             calls["read_size"] = size
             return b"<"
 
-    def fake_urlopen(request, timeout):
-        calls["method"] = request.get_method()
-        calls["timeout"] = timeout
-        return FakeResponse()
+    class FakeOpener:
+        def open(self, request, timeout):
+            calls["method"] = request.get_method()
+            calls["timeout"] = timeout
+            return FakeResponse()
 
-    monkeypatch.setattr("src.services.free_games_service.urlopen", fake_urlopen)
+    def fake_build_opener(proxy_handler):
+        calls["proxy_handler_type"] = type(proxy_handler).__name__
+        calls["proxy_handler_proxies"] = getattr(proxy_handler, "proxies", None)
+        return FakeOpener()
+
+    monkeypatch.setattr("src.services.free_games_service.build_opener", fake_build_opener)
 
     assert service._is_vnc_ready("http://fgc-epic-main:6080/vnc.html")
-    assert calls == {"method": "GET", "timeout": 2, "read_size": 1}
+    assert calls == {
+        "proxy_handler_type": "ProxyHandler",
+        "proxy_handler_proxies": {},
+        "method": "GET",
+        "timeout": 2,
+        "read_size": 1,
+    }
 
 
 def test_free_games_run_now_requires_enabled_account(monkeypatch):

@@ -19,8 +19,8 @@ from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 from urllib.error import URLError
+from urllib.request import ProxyHandler, build_opener
 from urllib.request import Request as UrlRequest
-from urllib.request import urlopen
 
 import aiohttp
 
@@ -2251,7 +2251,8 @@ class FreeGamesService:
     def _is_vnc_ready(self, target: str) -> bool:
         request = UrlRequest(target, method="GET")
         try:
-            with urlopen(request, timeout=2) as response:
+            opener = build_opener(ProxyHandler({}))
+            with opener.open(request, timeout=2) as response:
                 response.read(1)
                 return 200 <= int(response.status) < 500
         except (OSError, URLError):
